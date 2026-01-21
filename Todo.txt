@@ -1,10 +1,13 @@
 Todo:
+make new textures - started
+add new character select menu - in progress (currently disabled)
 generate all new boss assets and animations - done
 fix basic enemies not spawning - done
-fix towers not spawning verticle
-generate tower sky textures for each world
-change boss spawn animation to be unique per world
-impliment level editor into the level and add the /leveleditor command to the dev console - in progress
+fix towers not spawning verticle - not started
+generate tower sky textures for each world - not started
+change boss spawn animation to be unique per world - not started
+create brand new level editor system - not started
+impliment level editor into the level and add the /leveleditor command to the dev console - in progress (some of the code is written.)
 
 
 errors
