@@ -1,0 +1,60 @@
+<<<<<<< HEAD
+{
+  "music": true,
+  "sfx": true,
+  "glitch_fx": true,
+  "window_mode": "windowed",
+  "key_map": {
+    "move_left": 97,
+    "move_right": 100,
+    "up": 119,
+    "down": 115,
+    "jump": 32,
+    "shoot": 102,
+    "pause": 27,
+    "accept": 13,
+    "back": 27,
+    "menu_up": 1073741906,
+    "menu_down": 1073741905
+  },
+  "controller_map": {
+    "move_axis_x": 0,
+    "move_axis_y": 1,
+    "jump": 0,
+    "shoot": 2,
+    "pause": 7,
+    "accept": 0,
+    "back": 1
+  },
+  "character": "player"
+=======
+{
+  "music": true,
+  "sfx": true,
+  "glitch_fx": true,
+  "window_mode": "windowed",
+  "key_map": {
+    "move_left": 97,
+    "move_right": 100,
+    "up": 119,
+    "down": 115,
+    "jump": 32,
+    "shoot": 102,
+    "pause": 27,
+    "accept": 13,
+    "back": 27,
+    "menu_up": 1073741906,
+    "menu_down": 1073741905
+  },
+  "controller_map": {
+    "move_axis_x": 0,
+    "move_axis_y": 1,
+    "jump": 0,
+    "shoot": 2,
+    "pause": 7,
+    "accept": 0,
+    "back": 1
+  },
+  "character": "player"
+>>>>>>> 0b8b5b3ca9fbab68e9d89eabc877706fe3156be2
+}
