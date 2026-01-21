@@ -1,5 +1,6 @@
 Todo:
-make new textures - started
+make new textures - not started
+reoganize main.py and delete any unused code (unused code will be shoved in a unused.py file)
 add new character select menu - in progress (currently disabled)
 generate all new boss assets and animations - done
 fix basic enemies not spawning - done
