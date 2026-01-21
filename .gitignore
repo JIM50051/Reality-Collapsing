@@ -22,3 +22,9 @@ Thumbs.db
 
 # Logs
 *.log
+
+#Hidden Files
+hidden/
+*.unused.py
+*.build_exe.bat
+
