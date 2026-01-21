@@ -26,4 +26,4 @@ As **The Wanderer**, you must navigate through collapsing zones of reality, conf
 
 ## 👤 Developer
 Developed and designed by **James Griepentrog (JIM50051)**  
-© 2025 Reality Collapsing Studios. All Rights Reserved.
+© 2025 James Griepentrog. All Rights Reserved.
