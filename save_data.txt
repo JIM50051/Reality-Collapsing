@@ -1,1 +1,0 @@
-{"world": 1, "level": 1, "coins": 0, "speedrun_active": false, "speedrun_start": 0.0, "speedrun_pause_accum": 0.0, "speedrun_paused": false}
