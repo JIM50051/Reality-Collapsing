@@ -3188,18 +3188,20 @@ class Portal(pygame.sprite.Sprite):
     def update(self, dt: float = 1 / FPS) -> None:
         self._anim_timer += dt
         angle = (self._anim_timer * 40.0) % 360
-        pulse = 1.0 + 0.08 * math.sin(self._anim_timer * 6.0)
+        pulse_base = 0.08 + (0.06 if self.opening else 0.0)
+        pulse = 1.0 + pulse_base * math.sin(self._anim_timer * 6.0)
         new_image = pygame.transform.rotozoom(self.base_image, angle, pulse)
         center = self.rect.center
-        # Add simple electricity arcs around the portal edge
         electric = new_image.copy()
         arc_surface = pygame.Surface(electric.get_size(), pygame.SRCALPHA)
-        for _ in range(4):
+        arc_count = 6 if self.opening else 3
+        for _ in range(arc_count):
             x1 = random.randint(0, arc_surface.get_width() - 1)
             y1 = random.randint(0, arc_surface.get_height() - 1)
             x2 = x1 + random.randint(-24, 24)
             y2 = y1 + random.randint(-24, 24)
-            color = (180, 220, 255, random.randint(140, 220))
+            r, g, b = self.lightning_color
+            color = (r, g, b, random.randint(140, 230))
             pygame.draw.line(arc_surface, color, (x1, y1), (x2, y2), width=2)
         electric.blit(arc_surface, (0, 0), special_flags=pygame.BLEND_ADD)
         self.image = electric
