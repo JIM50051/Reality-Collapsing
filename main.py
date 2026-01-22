@@ -7409,12 +7409,7 @@ class CreditsScene(Scene):
             prompt_surf = pygame.Surface((w, 50), pygame.SRCALPHA)
             prompt_surf.fill((0, 0, 0, 0))
             device = getattr(self.game, "last_input_device", "keyboard")
-            if device == "controller":
-                prompt_text = "Press A/Start to return to Title Screen"
-            elif device == "mouse":
-                prompt_text = "Click to return to Title Screen"
-            else:
-                prompt_text = "Press Enter to return to Title Screen"
+            prompt_text = "Press any button to return to Title Screen"
             draw_prompt_with_icons(prompt_surf, pfont, prompt_text, 25, WHITE, device=device)
             if getattr(self.game.settings, "__getitem__", None) and self.game.settings["glitch_fx"]:
                 self.glitch_scanlines(prompt_surf)
@@ -7429,15 +7424,16 @@ class CreditsScene(Scene):
         if self.done:
             if getattr(self, "exit_triggered", False):
                 return
-            if self.ending_mode:
-                if event.type == pygame.KEYDOWN and event.key == pygame.K_RETURN:
-                    self.exit_triggered = True
-                    self.game._suppress_accept_until = time.time() + 0.5
-                    self.game.change_scene(TitleScene)
-                elif event.type == pygame.JOYBUTTONDOWN and event.button in (0, 7):  # A or Start
-                    self.exit_triggered = True
-                    self.game._suppress_accept_until = time.time() + 0.5
-                    self.game.change_scene(TitleScene)
+            if event.type in (
+                pygame.KEYDOWN,
+                pygame.MOUSEBUTTONDOWN,
+                pygame.MOUSEBUTTONUP,  # treat mouse clicks as buttons
+                pygame.JOYBUTTONDOWN,
+                pygame.JOYHATMOTION,
+            ):
+                self.exit_triggered = True
+                self.game._suppress_accept_until = time.time() + 0.5
+                self.game.change_scene(TitleScene)
             else:
                 if event.type == pygame.KEYDOWN:
                     self.exit_triggered = True
