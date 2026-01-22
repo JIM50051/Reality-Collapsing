@@ -22,6 +22,7 @@ except Exception:
 
     
 
+# === Config / paths / constants ===
 SCREEN_WIDTH, SCREEN_HEIGHT = 1280, 800
 SCREEN_SIZE = (SCREEN_WIDTH, SCREEN_HEIGHT)
 FPS = 60
@@ -52,6 +53,7 @@ MAGENTA = (255, 0, 255)
 HOT_PINK = (255, 80, 80)
 
 
+# === Core scene/input/menu types ===
 class Scene:
     def __init__(self, game: Any):
         self.game = game
@@ -348,6 +350,7 @@ def draw_glitch_text(surface, font, text, y, color, glitch_fx=False, *args, **kw
     surface.blit(rendered, rect)
 
 
+# === Startup warning ===
 def show_seizure_warning(screen, duration=3.5):
     # Ensure controllers are initialised so gamepad input works here
     try:
@@ -420,6 +423,7 @@ def show_seizure_warning(screen, duration=3.5):
             shown_continue = True
         clock.tick(60)
         
+# === Weather system ===
 SNOW_PARTICLE: Dict[str, Any] = {
     "size": 3,
     "color": (255, 255, 255),
@@ -890,6 +894,7 @@ PLAYER_SPAWN = (100, 450)
 # ---------------------------------------------------------------------------
 
 
+# === Settings / progress / assets ===
 class SettingsManager:
     def __init__(self, path: Path):
         self.path = Path(path)
@@ -1590,6 +1595,7 @@ class SoundManager:
 # ---------------------------------------------------------------------------
 
 
+# === FX helpers / transitions ===
 def load_gif_frames(path: Path) -> Tuple[List[pygame.Surface], List[float]]:
     frames: List[pygame.Surface] = []
     durations: List[float] = []
@@ -2628,6 +2634,7 @@ def list_character_folders():
     return [f.name for f in char_dir.iterdir() if f.is_dir()]
 
 
+# === Entities: player / platforms / enemies / bosses / objects ===
 class Player(pygame.sprite.Sprite):
     def __init__(
         self,
@@ -4294,6 +4301,7 @@ class Spike(Hazard):
         assets: Dict[str, pygame.Surface] = {}
         size = (32, 16)
         spike_path = ASSET_DIR / "objects" / f"world{world}" / "spike.png"
+        fallback_path = OBJECT_DIR / "spike.png"
         if spike_path.exists():
             try:
                 sheet = pygame.image.load(spike_path).convert_alpha()
@@ -4304,6 +4312,16 @@ class Spike(Hazard):
                     assets[direction] = sprite
             except Exception as e:
                 print(f"Failed to load spike assets for world {world}: {e}")
+        elif fallback_path.exists():
+            try:
+                base = pygame.image.load(str(fallback_path)).convert_alpha()
+                base = pygame.transform.smoothscale(base, size)
+                assets["up"] = base
+                assets["down"] = pygame.transform.rotate(base, 180)
+                assets["left"] = pygame.transform.rotate(base, 90)
+                assets["right"] = pygame.transform.rotate(base, -90)
+            except Exception as e:
+                print(f"Failed to load spike fallback asset: {e}")
 
         if not assets:
             # Fallback to generated spikes with world-themed colors
@@ -4363,6 +4381,7 @@ class LavaBubble(Hazard):
             return cls._ASSETS[world]
         frames = []
         orb_path = ASSET_DIR / "objects" / f"world{world}" / "lava_bubble.png"
+        fallback_path = OBJECT_DIR / "lava_bubble.png"
         if orb_path.exists():
             try:
                 sheet = pygame.image.load(orb_path).convert_alpha()
@@ -4370,6 +4389,13 @@ class LavaBubble(Hazard):
                     frames.append(sheet.subsurface((i * 32, 0, 32, 32)))
             except Exception as e:
                 print(f"Failed to load orb assets for world {world}: {e}")
+        elif fallback_path.exists():
+            try:
+                sheet = pygame.image.load(str(fallback_path)).convert_alpha()
+                for i in range(4):
+                    frames.append(sheet.subsurface((i * 32, 0, 32, 32)))
+            except Exception as e:
+                print(f"Failed to load lava bubble fallback asset: {e}")
         if not frames:
             # Fallback: animated procedural orb
             for i in range(4):
@@ -4514,26 +4540,30 @@ class Icicle(Hazard):
             self.rect.y += self.fall_speed
 
 
-class WindOrb(Hazard):
-    """A floating orb that creates wind currents."""
-    def __init__(self, x: int, y: int):
-        super().__init__(x, y)
-        self.image.fill((200, 200, 255))
-        pygame.draw.circle(self.image, (255, 255, 255), (16, 16), 12)
-        self.wind_strength = 3
-        self.wind_radius = 100
-        self.is_deadly = True
-
-    def update(self):
-        super().update()
-        # Wind effect is handled in the player's physics update
-
-
 class ElectricTile(Hazard):
     """An electrified tile that periodically activates."""
     def __init__(self, x: int, y: int):
         super().__init__(x, y)
-        self.image.fill((100, 100, 255))
+        self._inactive_image = None
+        self._active_image = None
+        tile_path = OBJECT_DIR / "electric_tile.png"
+        if tile_path.exists():
+            try:
+                base = pygame.image.load(str(tile_path)).convert_alpha()
+                base = pygame.transform.smoothscale(base, (32, 32))
+                self._inactive_image = base
+                active = base.copy()
+                active.fill((255, 255, 120, 160), special_flags=pygame.BLEND_RGBA_ADD)
+                self._active_image = active
+            except Exception:
+                self._inactive_image = None
+                self._active_image = None
+        if self._inactive_image is None:
+            self.image.fill((100, 100, 255))
+            self._inactive_image = self.image.copy()
+            active = self.image.copy()
+            active.fill((255, 255, 0))
+            self._active_image = active
         self.active = False
         self.timer = 0
         self.cycle_time = 120  # frames
@@ -4545,7 +4575,10 @@ class ElectricTile(Hazard):
             self.timer = 0
             self.active = not self.active
         self.is_deadly = self.active
-        self.image.fill((100, 100, 255) if not self.active else (255, 255, 0))
+        if self.active:
+            self.image = self._active_image
+        else:
+            self.image = self._inactive_image
 
 
 class GhostOrb(Hazard):
@@ -4681,7 +4714,7 @@ def create_world_object(world: int, x: int, y: int) -> pygame.sprite.Sprite:
     options = WORLD_THEME_OBJECTS.get(world) or [WORLD_SPECIALS.get(world, "coin")]
     name = random.choice(options)
     if name == "spike":
-        return Spike(x, y)
+        return Spike(x, y, world=world)
     if name == "rock":
         return FallingRock(x, y)
     if name == "quicksand":
@@ -4689,9 +4722,9 @@ def create_world_object(world: int, x: int, y: int) -> pygame.sprite.Sprite:
     if name == "icicle":
         return Icicle(x, y)
     if name == "lava":
-        return LavaBubble(x, y)
+        return LavaBubble(x, y, world=world)
     if name == "wind":
-        return WindOrb(x, y)
+        return WindOrb(x, y, world=world)
     if name == "electric":
         return ElectricTile(x, y)
     if name == "ghost":
@@ -4735,6 +4768,7 @@ def _draw_glitch_overlay(surface: pygame.Surface) -> None:
             pygame.draw.rect(surface, color, (0, y, SCREEN_WIDTH, random.randint(2, 6)))
 
 
+# === Menus / cutscenes ===
 def run_settings_menu(game: "Game", title: str = "SETTINGS") -> None:
     def toggle_music() -> None:
         enabled = game.settings.toggle("music")
@@ -5787,10 +5821,22 @@ class LevelGenerator:
     }
 
     HAZARD_BUILDERS: Dict[str, Callable[[Platform, random.Random], Optional[pygame.sprite.Sprite]]] = {
-    "spike": lambda platform, _rng: Spike(platform.rect.centerx - 16, platform.rect.top - 16, world=getattr(platform, "world_num", 1)),
-        "lava": lambda platform, _rng: LavaBubble(platform.rect.centerx - 16, platform.rect.top - 32),
+        "spike": lambda platform, _rng: Spike(
+            platform.rect.centerx - 16,
+            platform.rect.top - 16,
+            world=getattr(platform, "world_num", 1),
+        ),
+        "lava": lambda platform, _rng: LavaBubble(
+            platform.rect.centerx - 16,
+            platform.rect.top - 32,
+            world=getattr(platform, "world_num", 1),
+        ),
         "icicle": lambda platform, _rng: Icicle(platform.rect.centerx - 16, platform.rect.top - 32),
-        "wind": lambda platform, _rng: WindOrb(platform.rect.centerx - 16, platform.rect.top - 96),
+        "wind": lambda platform, _rng: WindOrb(
+            platform.rect.centerx - 16,
+            platform.rect.top - 96,
+            world=getattr(platform, "world_num", 1),
+        ),
         "electric": lambda platform, _rng: ElectricTile(platform.rect.centerx - 16, platform.rect.top - 20),
         "rock": lambda platform, _rng: FallingRock(platform.rect.centerx - 12, platform.rect.top - 48),
         "quicksand": lambda platform, _rng: QuicksandTile(platform.rect.centerx - 16, platform.rect.top - 8),
@@ -6456,6 +6502,7 @@ class LevelGenerator:
         return self.physics.can_reach(from_pos, to_pos)
 
 
+# === Scenes ===
 class CreditScene(Scene):
     def __init__(self, game: "Game"):
         super().__init__(game)
@@ -10563,6 +10610,7 @@ class LevelEditorScene(Scene):
         draw_center_text(surface, font, f"Level Editor: Tool=[{self.selected_tool}] Tab=Cycle Ctrl+S=Save Space=Add Del=Remove Esc=Exit | WASD/Arrows=Pan", 40, (255,255,255))
 
 
+# === Game loop / application ===
 class Game:
     def open_level_editor(self) -> None:
         # Launch the level editor scene for the current world/level
