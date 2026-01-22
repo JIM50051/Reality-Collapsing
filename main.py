@@ -2,15 +2,6 @@ import os
 import sys
 
 import numpy as np
-from shared import (
-    Scene,
-    draw_center_text,
-    draw_glitch_text,
-    VerticalMenu,
-    MenuEntry,
-    InputState,
-    WHITE, CYAN, MAGENTA, HOT_PINK
-)
 import math
 import random
 import time
@@ -30,9 +21,6 @@ except Exception:
     ImageSequence = None
 
     
-
-# Import CreditsScene
-from credits_scene import CreditsScene
 
 SCREEN_WIDTH, SCREEN_HEIGHT = 1280, 800
 SCREEN_SIZE = (SCREEN_WIDTH, SCREEN_HEIGHT)
@@ -64,6 +52,316 @@ CYAN = (0, 255, 255)
 MAGENTA = (255, 0, 255)
 HOT_PINK = (255, 80, 80)
 
+
+class Scene:
+    def __init__(self, game: Any):
+        self.game = game
+
+    def on_enter(self):
+        pass
+
+    def on_exit(self):
+        pass
+
+    def handle_event(self, event):
+        pass
+
+    def update(self, dt: float):
+        pass
+
+    def draw(self, surface):
+        pass
+
+
+class InputState:
+    def __init__(self):
+        self.menu_up = False
+        self.menu_down = False
+        self.accept = False
+        self.back = False
+        self.pause = False
+        self.shoot = False
+        self.move_left = False
+        self.move_right = False
+        self.up = False
+        self.down = False
+        self.jump = False
+        self.move_axis = 0.0
+        self.vertical_axis = 0.0
+
+
+class VerticalMenu:
+    def __init__(self, *args, **kwargs):
+        self.entries = args[0] if args and isinstance(args[0], list) else []
+        self.selected = 0
+        self.anim_progress = 0.0  # For highlight animation
+        self.sound = kwargs.get("sound", None)
+
+    def handle_event(self, event):
+        # Keyboard navigation only; ESC tries to resume if a resume/continue entry exists
+        if event.type == pygame.KEYDOWN:
+            if event.key in (pygame.K_w, pygame.K_UP):
+                self.selected = (self.selected - 1) % len(self.entries)
+                if self.sound:
+                    self.sound.play_event("menu_move")
+                return None
+            if event.key in (pygame.K_s, pygame.K_DOWN):
+                self.selected = (self.selected + 1) % len(self.entries)
+                if self.sound:
+                    self.sound.play_event("menu_move")
+                return None
+            if event.key in (pygame.K_RETURN, pygame.K_SPACE):
+                entry = self.entries[self.selected]
+                if getattr(entry, "enabled", True):
+                    if self.sound:
+                        self.sound.play_event("menu_confirm")
+                    return entry.action()
+                return None
+            if event.key == pygame.K_ESCAPE:
+                for entry in self.entries:
+                    if callable(entry.label) and entry.label().lower() in ("resume", "continue"):
+                        if getattr(entry, "enabled", True):
+                            if self.sound:
+                                self.sound.play_event("menu_confirm")
+                            return entry.action()
+                entry = self.entries[self.selected]
+                if getattr(entry, "enabled", True):
+                    if self.sound:
+                        self.sound.play_event("menu_confirm")
+                    return entry.action()
+                return None
+        return None
+
+    def draw(self, surface, assets=None, y=None, glitch_fx=False, return_rects=False):
+        import random
+
+        if not hasattr(self, "entries") or not self.entries:
+            return
+
+        max_height = surface.get_height() * 0.45
+        min_font = 18
+        max_font = 36
+        entry_count = len(self.entries)
+        for font_size in range(max_font, min_font - 1, -1):
+            spacing = int(font_size * 1.6)
+            total_height = entry_count * spacing
+            if total_height <= max_height:
+                break
+        else:
+            font_size = min_font
+            spacing = int(font_size * 1.6)
+        font = assets.font(font_size, True) if assets and hasattr(assets, "font") else pygame.font.SysFont(
+            "consolas", font_size, bold=True
+        )
+        menu_width = int(surface.get_width() * 0.34)
+        menu_x = (surface.get_width() - menu_width) // 2
+        logo_bottom = int(surface.get_height() * 0.23) + 100
+        menu_y = y if y is not None else max(logo_bottom + 12, (surface.get_height() - (entry_count * spacing)) // 2)
+        selected = getattr(self, "selected", 0)
+        panel_rect = pygame.Rect(menu_x - 24, menu_y - 24, menu_width + 48, spacing * entry_count + 24)
+        pygame.draw.rect(surface, (28, 28, 48, 220), panel_rect, border_radius=24)
+        highlight_color1 = (90, 120, 255)
+        highlight_color2 = (180, 80, 255)
+        entry_rects = []
+        for i, entry in enumerate(self.entries):
+            text = entry.label() if callable(entry.label) else str(entry.label)
+            enabled = getattr(entry, "enabled", True)
+            color = (255, 255, 255) if enabled else (128, 128, 128)
+            rect_y = menu_y + i * spacing
+            entry_rect = pygame.Rect(menu_x, rect_y - spacing // 2 + 4, menu_width, spacing - 8)
+            entry_rects.append(entry_rect)
+            if i == selected:
+                highlight = pygame.Surface((menu_width, spacing - 8), pygame.SRCALPHA)
+                for y2 in range(spacing - 8):
+                    ratio = y2 / float(spacing - 9)
+                    color_blend = (
+                        int(highlight_color1[0] * (1 - ratio) + highlight_color2[0] * ratio),
+                        int(highlight_color1[1] * (1 - ratio) + highlight_color2[1] * ratio),
+                        int(highlight_color1[2] * (1 - ratio) + highlight_color2[2] * ratio),
+                        180,
+                    )
+                    highlight.fill(color_blend, rect=pygame.Rect(0, y2, menu_width, 1))
+                highlight_shadow = pygame.Surface((menu_width + 8, spacing), pygame.SRCALPHA)
+                pygame.draw.ellipse(highlight_shadow, (0, 0, 0, 80), highlight_shadow.get_rect())
+                highlight_shadow_rect = highlight_shadow.get_rect(center=(surface.get_width() // 2, rect_y + 3))
+                surface.blit(highlight_shadow, highlight_shadow_rect)
+                surface.blit(highlight, (menu_x, rect_y - spacing // 2 + 8))
+            if glitch_fx and i == selected:
+                for _ in range(3):
+                    offset_x = random.randint(-3, 3)
+                    offset_y = random.randint(-2, 2)
+                    flicker_color = (
+                        min(255, color[0] + random.randint(-40, 40)),
+                        min(255, color[1] + random.randint(-40, 40)),
+                        min(255, color[2] + random.randint(-40, 40)),
+                    )
+                    shadow = font.render(text, True, (0, 0, 0))
+                    shadow_rect = shadow.get_rect(center=(surface.get_width() // 2 + offset_x, rect_y + 3 + offset_y))
+                    surface.blit(shadow, shadow_rect)
+                    rendered = font.render(text, True, flicker_color)
+                    rect = rendered.get_rect(center=(surface.get_width() // 2 + offset_x, rect_y + offset_y))
+                    surface.blit(rendered, rect)
+            shadow = font.render(text, True, (0, 0, 0))
+            shadow_rect = shadow.get_rect(center=(surface.get_width() // 2, rect_y + 3))
+            surface.blit(shadow, shadow_rect)
+            rendered = font.render(text, True, color)
+            rect = rendered.get_rect(center=(surface.get_width() // 2, rect_y))
+            surface.blit(rendered, rect)
+            if i == selected:
+                pygame.draw.line(
+                    surface, (255, 255, 255, 80), (menu_x + 24, rect_y + font_size // 2), (menu_x + menu_width - 24, rect_y + font_size // 2), 2
+                )
+            if i != selected and glitch_fx:
+                for _ in range(2):
+                    offset_x = random.randint(-2, 2)
+                    offset_y = random.randint(-1, 1)
+                    shadow = font.render(text, True, (40, 40, 60))
+                    shadow_rect = shadow.get_rect(center=(surface.get_width() // 2 + offset_x, rect_y + 2 + offset_y))
+                    surface.blit(shadow, shadow_rect)
+                    rendered = font.render(text, True, color)
+                    rect = rendered.get_rect(center=(surface.get_width() // 2 + offset_x, rect_y + offset_y))
+                    surface.blit(rendered, rect)
+            elif i != selected:
+                shadow = font.render(text, True, (40, 40, 60))
+                shadow_rect = shadow.get_rect(center=(surface.get_width() // 2, rect_y + 2))
+                surface.blit(shadow, shadow_rect)
+                rendered = font.render(text, True, color)
+                rect = rendered.get_rect(center=(surface.get_width() // 2, rect_y))
+                surface.blit(rendered, rect)
+        self._last_entry_rects = entry_rects
+        if return_rects:
+            return entry_rects
+        selected = getattr(self, "selected", 0)
+        if not hasattr(self, "_last_selected"):
+            self._last_selected = selected
+        if self._last_selected != selected:
+            self.anim_progress = 0.0
+        self._last_selected = selected
+
+    # Second pass drawing (legacy layout kept for compatibility)
+        panel_rect = pygame.Rect(menu_x - 32, menu_y - 60, menu_width + 64, spacing * len(self.entries) + 60)
+        pygame.draw.rect(surface, (24, 24, 48, 220), panel_rect, border_radius=32)
+        highlight_color1 = (90, 120, 255)
+        highlight_color2 = (180, 80, 255)
+        for i, entry in enumerate(self.entries):
+            text = entry.label() if callable(entry.label) else str(entry.label)
+            enabled = getattr(entry, "enabled", True)
+            color = (255, 255, 255) if enabled else (128, 128, 128)
+            rect_y = menu_y + i * spacing
+            if i == selected:
+                highlight = pygame.Surface((menu_width, 64), pygame.SRCALPHA)
+                for y2 in range(64):
+                    ratio = y2 / 63.0
+                    color_blend = (
+                        int(highlight_color1[0] * (1 - ratio) + highlight_color2[0] * ratio),
+                        int(highlight_color1[1] * (1 - ratio) + highlight_color2[1] * ratio),
+                        int(highlight_color1[2] * (1 - ratio) + highlight_color2[2] * ratio),
+                        180,
+                    )
+                    highlight.fill(color_blend, rect=pygame.Rect(0, y2, menu_width, 1))
+                highlight_shadow = pygame.Surface((menu_width + 8, 72), pygame.SRCALPHA)
+                pygame.draw.ellipse(highlight_shadow, (0, 0, 0, 80), highlight_shadow.get_rect())
+                highlight_shadow_rect = highlight_shadow.get_rect(center=(surface.get_width() // 2, rect_y + 4))
+                surface.blit(highlight_shadow, highlight_shadow_rect)
+                surface.blit(highlight, (menu_x, rect_y - 32))
+            shadow = font.render(text, True, (0, 0, 0))
+            shadow_rect = shadow.get_rect(center=(surface.get_width() // 2, rect_y + 4))
+            surface.blit(shadow, shadow_rect)
+            rendered = font.render(text, True, color)
+            rect = rendered.get_rect(center=(surface.get_width() // 2, rect_y))
+            surface.blit(rendered, rect)
+            if i == selected:
+                pygame.draw.line(surface, (255, 255, 255, 80), (menu_x + 40, rect_y + 32), (menu_x + menu_width - 40, rect_y + 32), 3)
+            if i != selected:
+                shadow = font.render(text, True, (40, 40, 60))
+                shadow_rect = shadow.get_rect(center=(surface.get_width() // 2, rect_y + 3))
+                surface.blit(shadow, shadow_rect)
+                rendered = font.render(text, True, color)
+                rect = rendered.get_rect(center=(surface.get_width() // 2, rect_y))
+                surface.blit(rendered, rect)
+
+
+class MenuEntry:
+    def __init__(self, label: Callable[[], str], action: Callable[[], Any], enabled: Any = True):
+        self.label = label
+        self.action = action
+        self.enabled = enabled
+
+    def activate(self):
+        if callable(self.action) and (not hasattr(self, "enabled") or self.enabled):
+            return self.action()
+        return None
+
+
+def draw_center_text(surface, font, text, y, color, *args, **kwargs):
+    shadow = font.render(text, True, (0, 0, 0))
+    shadow_rect = shadow.get_rect(center=(surface.get_width() // 2, y + 3))
+    surface.blit(shadow, shadow_rect)
+    rendered = font.render(text, True, color)
+    rect = rendered.get_rect(center=(surface.get_width() // 2, y))
+    surface.blit(rendered, rect)
+
+
+def draw_glitch_text(surface, font, text, y, color, glitch_fx=False, *args, **kwargs):
+    if glitch_fx:
+        import random
+
+        for _ in range(3):
+            offset = random.randint(-3, 3)
+            r = int(max(0, min(255, color[0])))
+            g = int(max(0, min(255, color[1] + random.randint(-40, 40))))
+            b = int(max(0, min(255, color[2] + random.randint(-40, 40))))
+            glitch_color = (r, g, b)
+            shadow = font.render(text, True, (0, 0, 0))
+            shadow_rect = shadow.get_rect(center=(surface.get_width() // 2 + offset, y + 3 + offset))
+            surface.blit(shadow, shadow_rect)
+            rendered = font.render(text, True, glitch_color)
+            rect = rendered.get_rect(center=(surface.get_width() // 2 + offset, y + offset))
+            surface.blit(rendered, rect)
+    shadow = font.render(text, True, (0, 0, 0))
+    shadow_rect = shadow.get_rect(center=(surface.get_width() // 2, y + 3))
+    surface.blit(shadow, shadow_rect)
+    rendered = font.render(text, True, color)
+    rect = rendered.get_rect(center=(surface.get_width() // 2, y))
+    surface.blit(rendered, rect)
+
+
+def show_seizure_warning(screen, duration=3.5):
+    clock = pygame.time.Clock()
+    font = pygame.font.SysFont(FONT_NAME, 48, bold=True)
+    small_font = pygame.font.SysFont(FONT_NAME, 28)
+    warning_text = "SEIZURE WARNING"
+    info_text = "This game contains flashing lights and patterns that may trigger seizures."
+    continue_text = "Press any key to continue..."
+    start_time = pygame.time.get_ticks()
+    shown_continue = False
+    while True:
+        pygame.event.pump()  # ensure controller events get queued
+        screen.fill((0, 0, 0))
+        text_surface = font.render(warning_text, True, (255, 0, 0))
+        info_surface = small_font.render(info_text, True, WHITE)
+        cont_surface = small_font.render(continue_text, True, WHITE)
+        screen.blit(text_surface, (SCREEN_SIZE[0]//2 - text_surface.get_width()//2, SCREEN_SIZE[1]//2 - 100))
+        screen.blit(info_surface, (SCREEN_SIZE[0]//2 - info_surface.get_width()//2, SCREEN_SIZE[1]//2))
+        if shown_continue:
+            screen.blit(cont_surface, (SCREEN_SIZE[0]//2 - cont_surface.get_width()//2, SCREEN_SIZE[1]//2 + 80))
+        pygame.display.flip()
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+            # Allow keyboard, mouse, or controller buttons after the timer elapses
+            if shown_continue and (
+                event.type == pygame.KEYDOWN
+                or event.type == pygame.MOUSEBUTTONDOWN
+                or event.type == pygame.JOYBUTTONDOWN
+                or (event.type == pygame.JOYAXISMOTION and abs(event.value) > 0.5)
+            ):
+                return
+        if not shown_continue and (pygame.time.get_ticks() - start_time) > duration * 1000:
+            shown_continue = True
+        clock.tick(60)
+        
 SNOW_PARTICLE: Dict[str, Any] = {
     "size": 3,
     "color": (255, 255, 255),
@@ -4101,6 +4399,34 @@ def create_world_object(world: int, x: int, y: int) -> pygame.sprite.Sprite:
 # Menu primitives
 # ---------------------------------------------------------------------------
 
+def _draw_glitch_overlay(surface: pygame.Surface) -> None:
+    # Shared glitch pops/scanlines used by pause and settings menus
+    if random.random() < 0.18:
+        for _ in range(random.randint(2, 5)):
+            w = random.randint(60, 320)
+            h = random.randint(8, 32)
+            x = random.randint(0, SCREEN_WIDTH - w)
+            y = random.randint(0, SCREEN_HEIGHT - h)
+            color = (
+                random.randint(180, 255),
+                random.randint(0, 255),
+                random.randint(180, 255),
+                random.randint(80, 180),
+            )
+            glitch_rect = pygame.Surface((w, h), pygame.SRCALPHA)
+            glitch_rect.fill(color)
+            surface.blit(glitch_rect, (x, y), special_flags=pygame.BLEND_RGBA_ADD)
+    if random.random() < 0.12:
+        for _ in range(random.randint(2, 6)):
+            y = random.randint(0, SCREEN_HEIGHT - 1)
+            color = (
+                random.randint(180, 255),
+                random.randint(0, 255),
+                random.randint(180, 255),
+                random.randint(60, 120),
+            )
+            pygame.draw.rect(surface, color, (0, y, SCREEN_WIDTH, random.randint(2, 6)))
+
 
 def run_settings_menu(game: "Game", title: str = "SETTINGS") -> None:
     def toggle_music() -> None:
@@ -4161,6 +4487,8 @@ def run_settings_menu(game: "Game", title: str = "SETTINGS") -> None:
         pygame.K_ESCAPE
     ])
     while game.running:
+        # Poll controller so menu navigation works on gamepads even outside the main loop
+        game._poll_controller()
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 game.quit()
@@ -4180,35 +4508,8 @@ def run_settings_menu(game: "Game", title: str = "SETTINGS") -> None:
         # Settings background: solid black always
         game.screen.fill((0, 0, 0))
 
-        # Glitch pops and overlays only if glitch_fx is enabled
         if game.settings["glitch_fx"]:
-            # Glitch pops: random colored rectangles and scanlines
-            if random.random() < 0.18:
-                for _ in range(random.randint(2, 5)):
-                    w = random.randint(60, 320)
-                    h = random.randint(8, 32)
-                    x = random.randint(0, SCREEN_WIDTH - w)
-                    y = random.randint(0, SCREEN_HEIGHT - h)
-                    color = (
-                        random.randint(180, 255),
-                        random.randint(0, 255),
-                        random.randint(180, 255),
-                        random.randint(80, 180),
-                    )
-                    glitch_rect = pygame.Surface((w, h), pygame.SRCALPHA)
-                    glitch_rect.fill(color)
-                    game.screen.blit(glitch_rect, (x, y), special_flags=pygame.BLEND_RGBA_ADD)
-            # Scanline effect
-            if random.random() < 0.12:
-                for _ in range(random.randint(2, 6)):
-                    y = random.randint(0, SCREEN_HEIGHT - 1)
-                    color = (
-                        random.randint(180, 255),
-                        random.randint(0, 255),
-                        random.randint(180, 255),
-                        random.randint(60, 120),
-                    )
-                    pygame.draw.rect(game.screen, color, (0, y, SCREEN_WIDTH, random.randint(2, 6)))
+            _draw_glitch_overlay(game.screen)
 
         # Glitchy title and menu text only if glitch_fx is enabled
         title_font = game.assets.font(54, True)
@@ -4256,6 +4557,8 @@ def run_pause_menu(scene: "GameplayScene") -> str:
     scene.game.flight_cheat_enabled = False
 
     while scene.game.running:
+        # Poll controller so pause menu can be driven by gamepads
+        scene.game._poll_controller()
         mouse_clicked = False
         mouse_pos = (0, 0)
         for event in pygame.event.get():
@@ -4276,35 +4579,8 @@ def run_pause_menu(scene: "GameplayScene") -> str:
         # Solid black background
         scene.game.screen.fill((0, 0, 0))
 
-        # Glitch pops and overlays only if glitch_fx is enabled
         if scene.game.settings["glitch_fx"]:
-            # Glitch pops: random colored rectangles and scanlines
-            if random.random() < 0.18:
-                for _ in range(random.randint(2, 5)):
-                    w = random.randint(60, 320)
-                    h = random.randint(8, 32)
-                    x = random.randint(0, SCREEN_WIDTH - w)
-                    y = random.randint(0, SCREEN_HEIGHT - h)
-                    color = (
-                        random.randint(180, 255),
-                        random.randint(0, 255),
-                        random.randint(180, 255),
-                        random.randint(80, 180),
-                    )
-                    glitch_rect = pygame.Surface((w, h), pygame.SRCALPHA)
-                    glitch_rect.fill(color)
-                    scene.game.screen.blit(glitch_rect, (x, y), special_flags=pygame.BLEND_RGBA_ADD)
-            # Scanline effect
-            if random.random() < 0.12:
-                for _ in range(random.randint(2, 6)):
-                    y = random.randint(0, SCREEN_HEIGHT - 1)
-                    color = (
-                        random.randint(180, 255),
-                        random.randint(0, 255),
-                        random.randint(180, 255),
-                        random.randint(60, 120),
-                    )
-                    pygame.draw.rect(scene.game.screen, color, (0, y, SCREEN_WIDTH, random.randint(2, 6)))
+            _draw_glitch_overlay(scene.game.screen)
 
         # Large, glitchy title
         title_font = scene.game.assets.font(54, True)
@@ -4374,57 +4650,106 @@ def play_glitch_portal_cutscene(game: "Game") -> None:
     game.pause_speedrun(False)
 
 def play_first_entry_cutscene(game: "Game") -> None:
+    """
+    New opening cutscene: diagnostics -> portal spin-up -> reality breach.
+    Skippable via keyboard/mouse/controller after text appears.
+    """
     game.pause_speedrun(True)
-    game.sound.play_event("world_transition")
+    clock = game.clock
+    try:
+        game.sound.play_event("world_transition")
+    except Exception:
+        pass
+
     background = game.assets.background(1)
     overlay = pygame.Surface(SCREEN_SIZE, pygame.SRCALPHA)
-    title_font = game.assets.font(48, True)
+    portal_tex = game.assets.portal_texture(10)
+    title_font = game.assets.font(46, True)
     body_font = game.assets.font(24, False)
-    caption_font = game.assets.font(20, False)
-    lines = [
-        ("Verdant Outskirts", 0.2),
-        ("The first tower pulses with unstable energy.", 1.1),
-        ("Reach the portal before reality unravels.", 2.4),
+    hint_font = game.assets.font(18, False)
+
+    beats = [
+        ("Signal Found: Node W1", 0.0),
+        ("Stability: CRITICAL — Portal bootstrapping...", 1.4),
+        ("Objective: Reach the tower core before collapse.", 2.8),
     ]
     start = time.time()
-    duration = 5.2
-    skip = False
-    while game.running and not skip:
+    duration = 7.5
+    can_skip = False
+
+    while game.running:
         elapsed = time.time() - start
         if elapsed >= duration:
             break
+
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 game.quit()
                 game.pause_speedrun(False)
                 return
-            if event.type in (pygame.KEYDOWN, pygame.MOUSEBUTTONDOWN):
-                skip = True
+            if can_skip and (
+                event.type in (pygame.KEYDOWN, pygame.MOUSEBUTTONDOWN, pygame.JOYBUTTONDOWN)
+                or (event.type == pygame.JOYAXISMOTION and abs(event.value) > 0.5)
+            ):
+                elapsed = duration  # force exit after drawing once
+                break
 
+        # Base layer
         game.screen.blit(background, (0, 0))
-        overlay.fill((12, 24, 32, 160))
+
+        # Darken and color tint
+        overlay.fill((8, 16, 24, 190))
         game.screen.blit(overlay, (0, 0))
 
-        header_alpha = min(255, int(max(0.0, elapsed / 0.6) * 255))
-        header = title_font.render("Reality Collapsing", True, WHITE)
-        header.set_alpha(header_alpha)
-        game.screen.blit(header, header.get_rect(center=(SCREEN_WIDTH // 2, 150)))
+        # Portal spin-up
+        pulse = 1.0 + 0.15 * math.sin(elapsed * 7.5)
+        portal_scale = max(0.4, 1.3 - elapsed * 0.08)
+        portal_surf = pygame.transform.smoothscale(
+            portal_tex,
+            (
+                max(10, int(portal_tex.get_width() * portal_scale * pulse)),
+                max(10, int(portal_tex.get_height() * portal_scale * pulse)),
+            ),
+        )
+        portal_rect = portal_surf.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 20))
+        game.screen.blit(portal_surf, portal_rect, special_flags=pygame.BLEND_ADD)
 
-        for idx, (text, delay) in enumerate(lines):
+        # Glitch/scanlines
+        if game.settings["glitch_fx"]:
+            _draw_glitch_overlay(game.screen)
+
+        # Header
+        header_alpha = min(255, int(max(0.0, elapsed / 0.5) * 255))
+        header = title_font.render("BOOTSTRAPPING REALITY COLLAPSING", True, WHITE)
+        header.set_alpha(header_alpha)
+        game.screen.blit(header, header.get_rect(center=(SCREEN_WIDTH // 2, 140)))
+
+        # Beat text
+        for idx, (text, delay) in enumerate(beats):
             if elapsed >= delay:
-                alpha = min(255, int(min(1.0, (elapsed - delay) / 0.8) * 255))
+                alpha = min(255, int(min(1.0, (elapsed - delay) / 0.7) * 255))
                 render = body_font.render(text, True, WHITE)
                 render.set_alpha(alpha)
-                y = 260 + idx * 60
+                y = 240 + idx * 52
                 game.screen.blit(render, render.get_rect(center=(SCREEN_WIDTH // 2, y)))
 
-        hint_alpha = min(200, int(max(0.0, elapsed - 1.6) / 0.4 * 200))
-        hint = caption_font.render("Press any key to continue", True, WHITE)
-        hint.set_alpha(hint_alpha)
-        game.screen.blit(hint, hint.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT - 80)))
+        # Hint
+        if elapsed > 1.0:
+            can_skip = True
+            hint_alpha = int((math.sin(time.time() * 4) * 0.5 + 0.5) * 180)
+            hint = hint_font.render("Press any button to continue", True, WHITE)
+            hint.set_alpha(hint_alpha)
+            game.screen.blit(hint, hint.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT - 70)))
+
+        # Subtle vignette
+        vignette = pygame.Surface(SCREEN_SIZE, pygame.SRCALPHA)
+        for i in range(10):
+            alpha = int(8 * (i + 1))
+            pygame.draw.rect(vignette, (0, 0, 0, alpha), (i * 6, i * 6, SCREEN_WIDTH - i * 12, SCREEN_HEIGHT - i * 12), width=6)
+        game.screen.blit(vignette, (0, 0))
 
         pygame.display.flip()
-        game.clock.tick(FPS)
+        clock.tick(FPS)
 
     game.pause_speedrun(False)
 
@@ -5969,6 +6294,284 @@ class CharacterCreationScene(Scene):
         local_y = COLOR_WHEEL_RADIUS - int(math.sin(angle) * distance)
         return (self.wheel_rect.left + local_x, self.wheel_rect.top + local_y)
 
+
+class CreditsScene(Scene):
+    def __init__(self, game, ending_mode: bool = False):
+        super().__init__(game)
+        self.ending_mode = ending_mode
+        self.credits = [
+            "REALITY COLLAPSING",
+            "A Game by James Griepentrog",
+            "",
+            "Programming: James Griepentrog",
+            "",
+            "Art: James Griepentrog",
+            "",
+            "Sound Effects: James Griepentrog",
+            "",
+            "Level Design: James Griepentrog",
+            "",
+            "Music Credits:",
+            "All music in this game is sourced from Pixabay",
+            "and is free to use under the CC0 license.",
+            "",
+            "Special Thanks: You!",
+            "",
+            "Thank you for playing!",
+        ]
+
+        self.scroll_speed = 40
+        self.shards: List["CreditsScene.Shard"] = []
+        w, h = self.game.screen.get_size()
+        # Start below the bottom edge so credits scroll up onto the screen (matches title screen behavior)
+        self.scroll_y = h + 40  # start near the bottom edge so credits appear quickly
+        self.reset()
+
+        self.game.stop_music()
+        self.game.play_music("credits.mp3")
+
+        self.glitch_timer = 0
+        self.glitch_interval = 0.18
+        self.glitch_level = 1
+
+        w, h = self.game.screen.get_size()
+        self.temp = pygame.Surface((w, h)).convert()
+        self.overlay = pygame.Surface((w, h), pygame.SRCALPHA)
+
+    def reset(self):
+        w, h = self.game.screen.get_size()
+        # Keep spawn below the viewport so the first lines scroll into view
+        self.scroll_y = h + 40
+        self.done = False
+        self.prompt_blink_timer = 0
+        self.prompt_visible = True
+        self.glitch_level = 1
+        self.frame_count = 0
+        self.shards.clear()
+
+    def glitch_static(self, surf, amount=80):
+        noise = pygame.Surface(surf.get_size(), pygame.SRCALPHA)
+        arr = pygame.surfarray.pixels_alpha(noise)
+        arr[:, :] = np.random.randint(0, 256, arr.shape, dtype=arr.dtype)
+        del arr
+        noise.set_alpha(random.randint(30, 70))
+        surf.blit(noise, (0, 0), special_flags=pygame.BLEND_SUB)
+
+    def glitch_rgb_split(self, surf, amount=4):
+        ox = random.randint(-amount, amount)
+        oy = random.randint(-amount, amount)
+        shifted = pygame.Surface(surf.get_size()).convert()
+        shifted.blit(surf, (ox, oy))
+        surf.blit(shifted, (0, 0), special_flags=pygame.BLEND_ADD)
+
+    def glitch_slices(self, surf, slices=4, max_shift=30):
+        w, h = surf.get_size()
+        for _ in range(slices):
+            y = random.randint(0, h - 4)
+            slice_h = random.randint(4, 20)
+            if y + slice_h > h:
+                slice_h = h - y
+            if slice_h <= 0:
+                continue
+            shift = random.randint(-max_shift, max_shift)
+            slc = surf.subsurface((0, y, w, slice_h)).copy()
+            surf.blit(slc, (shift, y))
+
+    def glitch_scanlines(self, surf):
+        w, h = surf.get_size()
+        scan = pygame.Surface((w, h), pygame.SRCALPHA)
+        for y in range(0, h, 4):
+            pygame.draw.line(scan, (0, 0, 0, random.randint(40, 90)), (0, y), (w, y), 1)
+        surf.blit(scan, (0, 0))
+
+    def glitch_screen_shake(self, surf):
+        ox = random.randint(-3, 3)
+        oy = random.randint(-3, 3)
+        temp = surf.copy()
+        surf.blit(temp, (ox, oy))
+
+    def glitch_vhs(self, surf):
+        w, h = surf.get_size()
+        for _ in range(4):
+            y = random.randint(0, h - 1)
+            bar_height = 2
+            if y + bar_height > h:
+                bar_height = h - y
+            if bar_height <= 0:
+                continue
+            bar = surf.subsurface((0, y, w, bar_height)).copy()
+            sx = random.randint(-20, 20)
+            surf.blit(bar, (sx, y))
+
+    def glitch_meltdown(self, surf):
+        offset = math.sin(self.frame_count * 0.2) * 5
+        surf.scroll(dx=int(offset), dy=0)
+
+    def glitch_wireframe(self, surf):
+        w, h = surf.get_size()
+        wire = pygame.Surface((w, h), pygame.SRCALPHA)
+        for y in range(0, h, 50):
+            pygame.draw.line(wire, (80, 80, 80, 100), (0, y), (w, y))
+        for x in range(0, w, 50):
+            pygame.draw.line(wire, (80, 80, 80, 100), (x, 0), (x, h))
+        surf.blit(wire, (0, 0))
+
+    def glitch_flash(self, surf):
+        flash = pygame.Surface(surf.get_size())
+        flash.fill((255, 255, 255))
+        flash.set_alpha(random.randint(20, 120))
+        surf.blit(flash, (0, 0))
+
+    def glitch_vortex(self, surf):
+        angle = math.sin(self.frame_count * 0.05) * 3
+        scaled = pygame.transform.rotozoom(surf, angle, 1.02)
+        rect = scaled.get_rect(center=surf.get_rect().center)
+        surf.blit(scaled, rect)
+
+    def glitch_blackhole(self, surf):
+        scale = 1 + (math.sin(self.frame_count * 0.1) * 0.05)
+        scaled = pygame.transform.rotozoom(surf, 0, scale)
+        rect = scaled.get_rect(center=surf.get_rect().center)
+        surf.blit(scaled, rect, special_flags=pygame.BLEND_SUB)
+
+    def glitch_datamosh(self, surf):
+        w, h = surf.get_size()
+        slice_h = 6
+        for _ in range(5):
+            y = random.randint(0, h - 1)
+            actual_h = slice_h if y + slice_h <= h else h - y
+            if actual_h <= 0:
+                continue
+            slc = surf.subsurface((0, y, w, actual_h)).copy()
+            surf.blit(slc, (random.randint(-30, 30), y))
+
+    class Shard:
+        def __init__(self, x, y, color):
+            self.x, self.y = x, y
+            self.dx = random.uniform(-6, 6)
+            self.dy = random.uniform(-10, -4)
+            self.color = color
+            self.gravity = 0.35
+            self.size = random.randint(1, 3)
+
+        def update(self):
+            self.x += self.dx
+            self.y += self.dy
+            self.dy += self.gravity
+
+        def draw(self, surf):
+            pygame.draw.rect(surf, self.color, (int(self.x), int(self.y), self.size, self.size))
+
+    def spawn_shatter(self, surf, count=120):
+        w, h = surf.get_size()
+        for _ in range(count):
+            x = random.randint(0, w - 1)
+            y = random.randint(0, h - 1)
+            self.shards.append(self.Shard(x, y, surf.get_at((x, y))))
+
+    def update(self, dt):
+        self.frame_count += 1
+        if not self.done:
+            self.scroll_y -= self.scroll_speed * dt
+            denom = 600 if not self.ending_mode else (self.game.screen.get_height() + len(self.credits) * 48)
+            p = max(0, min(1, 1 - self.scroll_y / denom))
+            if p > 0.2:
+                self.glitch_level = 2
+            if p > 0.4:
+                self.glitch_level = 3
+            if p > 0.6:
+                self.glitch_level = 4
+            if p > 0.75:
+                self.glitch_level = 5
+            if p > 0.85:
+                self.glitch_level = 6
+            if p > 0.92:
+                self.glitch_level = 7
+            if self.scroll_y < -len(self.credits) * 48:
+                self.done = True
+                self.glitch_level = 8
+                self.spawn_shatter(self.game.screen)
+        else:
+            self.prompt_blink_timer += dt
+            if self.prompt_blink_timer >= 0.5:
+                self.prompt_visible = not self.prompt_visible
+                self.prompt_blink_timer = 0
+        self.glitch_timer += dt
+
+    def draw(self, surface):
+        w, h = surface.get_size()
+        self.temp.fill((0, 0, 0))
+        font = self.game.assets.font(36, True)
+        y = int(self.scroll_y)
+        for line in self.credits:
+            draw_center_text(self.temp, font, line, y, WHITE)
+            y += 48
+        if getattr(self.game.settings, "__getitem__", None) and self.game.settings["glitch_fx"]:
+            lvl = self.glitch_level
+            if lvl >= 1:
+                self.glitch_scanlines(self.temp)
+                if random.random() < 0.5:
+                    self.glitch_static(self.temp)
+            if lvl >= 2:
+                self.glitch_slices(self.temp)
+                self.glitch_rgb_split(self.temp, 4)
+            if lvl >= 3:
+                self.glitch_screen_shake(self.temp)
+            if lvl >= 4:
+                self.glitch_vhs(self.temp)
+            if lvl >= 5:
+                self.glitch_meltdown(self.temp)
+                self.glitch_wireframe(self.temp)
+            if lvl >= 6:
+                self.glitch_vortex(self.temp)
+                self.glitch_datamosh(self.temp)
+            if lvl >= 7:
+                self.glitch_blackhole(self.temp)
+                if random.random() < 0.5:
+                    self.glitch_flash(self.temp)
+            if lvl >= 8:
+                self.glitch_vortex(self.temp)
+                self.glitch_blackhole(self.temp)
+                self.glitch_slices(self.temp, 8, 35)
+                self.glitch_rgb_split(self.temp, 12)
+                self.glitch_flash(self.temp)
+        surface.blit(self.temp, (0, 0))
+        if self.done:
+            for shard in self.shards:
+                shard.update()
+                shard.draw(surface)
+        if self.done and self.prompt_visible:
+            pfont = self.game.assets.font(28, True)
+            prompt_surf = pygame.Surface((w, 50), pygame.SRCALPHA)
+            prompt_surf.fill((0, 0, 0, 0))
+            draw_center_text(prompt_surf, pfont, "Press Enter to return to Title Screen", 25, WHITE)
+            if getattr(self.game.settings, "__getitem__", None) and self.game.settings["glitch_fx"]:
+                self.glitch_scanlines(prompt_surf)
+                if random.random() < 0.5:
+                    self.glitch_static(prompt_surf)
+                self.glitch_slices(prompt_surf, 2, 12)
+                self.glitch_rgb_split(prompt_surf, 3)
+                self.glitch_screen_shake(prompt_surf)
+            surface.blit(prompt_surf, (0, h - 125))
+
+    def handle_event(self, event):
+        if self.done:
+            if self.ending_mode:
+                if event.type == pygame.KEYDOWN and event.key == pygame.K_RETURN:
+                    self.game.change_scene(TitleScene)
+            else:
+                if event.type == pygame.KEYDOWN:
+                    self.game.change_scene(TitleScene)
+        elif not self.done and not self.ending_mode:
+            if event.type == pygame.KEYDOWN:
+                self.done = True
+                self.glitch_level = 8
+                self.spawn_shatter(self.game.screen)
+
+    def on_exit(self):
+        pass
+
+
 class TitleScene(Scene):
     def open_level_selector(self) -> None:
         from main import LevelSelectScene
@@ -6011,6 +6614,7 @@ class TitleScene(Scene):
                     self.continue_game,
                     enabled=lambda: SAVE_FILE.exists(),
                 ),
+                MenuEntry(lambda: " Jump to Final Boss (defeated)", self.teleport_final_boss_defeated),
                 MenuEntry(lambda: " View Credits", self.play_credits),
                 MenuEntry(lambda: " Settings", self.open_settings),
                 MenuEntry(lambda: " Quit", self.quit_game),
@@ -6044,7 +6648,6 @@ class TitleScene(Scene):
 
     def play_credits(self) -> None:
         self.game.sound.play_event("menu_confirm")
-        from credits_scene import CreditsScene
         self.game.change_scene(CreditsScene, ending_mode=False)
 
 
@@ -6075,6 +6678,8 @@ class TitleScene(Scene):
         clock = self.game.clock
         glitch_fx = self.game.settings["glitch_fx"]
         while running and self.game.running:
+            # Poll controller to allow confirm/cancel via gamepad
+            self.game._poll_controller()
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     self.game.quit()
@@ -7508,7 +8113,6 @@ class BossArenaScene(Scene):
                 objects = list(self.platforms) + [self.player, self.boss] + list(self.player_projectiles) + list(self.boss_projectiles)
                 backgrounds = [self.background] if hasattr(self, 'background') else []
                 play_portal_collapse_cutscene(self.game, portal_center, objects, backgrounds)
-                from credits_scene import CreditsScene
                 self.game.change_scene(CreditsScene, ending_mode=True)
             else:
                 self._complete_stage()
@@ -8215,250 +8819,143 @@ class VictoryScene(Scene):
         flash.set_alpha(random.randint(20, 120))
         surf.blit(flash, (0,0))
 
-# --- Portal Collapse Cutscene ---
+# --- Portal Collapse Cutscene (new) ---
 def play_portal_collapse_cutscene(game: "Game", portal_pos: Tuple[int, int], objects: list, backgrounds: list) -> None:
-    """Cutscene: Everything gets sucked into the portal, then explodes, then credits roll."""
-    start_time = time.time()
-    duration = 10.0
-    sucked = set()
+    """
+    Finale: the portal awakens, pulls reality inside-out, detonates, then drops into the credits.
+    Uses sounds if available; gracefully degrades otherwise.
+    """
+    game.pause_speedrun(True)
     clock = pygame.time.Clock()
-    TARGET_FPS = 30
-    # (SFX removed: portal_open)
-    # Load backgrounds from all worlds
-    all_bg_files = [BACKGROUND_DIR / f"world{i}.png" for i in range(1, 11) if (BACKGROUND_DIR / f"world{i}.png").exists()]
-    all_backgrounds = [pygame.image.load(str(f)).convert() for f in all_bg_files]
-    # Load a sample of objects from all worlds
-    object_files = [OBJECT_DIR / f for f in os.listdir(OBJECT_DIR) if f.endswith('.png')]
-    all_objects = [pygame.image.load(str(f)).convert_alpha() for f in object_files]
-    # Place objects off-screen in a spiral (make them bigger)
-    obj_sprites = []
-    spiral_radius = max(SCREEN_WIDTH, SCREEN_HEIGHT) * 0.7
-    for i, img in enumerate(all_objects):
-        rect = img.get_rect()
-        angle = 2 * math.pi * (i / max(1, len(all_objects)))
-        x = int(portal_pos[0] + math.cos(angle) * spiral_radius * random.uniform(1.1, 1.4))
-        y = int(portal_pos[1] + math.sin(angle) * spiral_radius * random.uniform(1.1, 1.4))
-        # Start with scale 2.0 (double size)
-        obj_sprites.append({'image': img, 'rect': rect, 'start': (x, y), 'angle': angle, 'scale': 2.0})
-    # Place backgrounds off-screen in a spiral
-    bg_sprites = []
-    for i, img in enumerate(all_backgrounds):
-        rect = img.get_rect()
-        # Appear from offscreen at all angles, start smaller
-        angle = 2 * math.pi * (i / max(1, len(all_backgrounds)))
-        # Place well offscreen (1.3-1.6x spiral_radius)
-        offscreen_dist = spiral_radius * random.uniform(1.3, 1.6)
-        x = int(portal_pos[0] + math.cos(angle) * offscreen_dist)
-        y = int(portal_pos[1] + math.sin(angle) * offscreen_dist)
-        bg_sprites.append({'image': img, 'rect': rect, 'start': (x, y), 'angle': angle, 'scale': 0.35})
-    fade_to_black = False
-    explosion_start = None
-    condense_start = None
-    condense_duration = 2.8  # seconds (longer condense)
-    explosion_duration = 2.5  # seconds
-    particles = []
-    condensing = False
-    exploded = False
-    # (All collapse cutscene SFX removed)
+    TARGET_FPS = 60
+
+    for cue in ("portal_open", "collapse_rumble"):
+        try:
+            game.sound.play_event(cue)
+        except Exception:
+            pass
+
+    portal_tex = game.assets.portal_texture(10)
+    bg_surfs = [bg.copy().convert() for bg in backgrounds] if backgrounds else []
+    obj_surfs = [obj.image.copy() if hasattr(obj, "image") else obj.copy() for obj in objects] if objects else []
+
+    debris: list[dict] = []
+    for _ in range(260):
+        vel = pygame.Vector2(random.uniform(-3, 3), random.uniform(-3, 3)) * random.uniform(6, 18)
+        debris.append({
+            "pos": pygame.Vector2(portal_pos),
+            "vel": vel,
+            "life": random.uniform(0.5, 1.5),
+            "color": (
+                random.randint(180, 255),
+                random.randint(120, 255),
+                random.randint(200, 255),
+            ),
+        })
+
+    start = time.time()
+    duration = 10.0
+    inversion_triggered = False
+    explosion_triggered = False
+
     while game.running:
-        pygame.event.pump()
-        elapsed = time.time() - start_time
-        t = min(elapsed / duration, 1.0)
-        # Fade backgrounds to black as t approaches 1
-        if t > 0.7:
-            fade_to_black = True
-        # Always draw backgrounds spiraling and shrinking to portal, even during fade/condense
-        game.screen.fill((0, 0, 0))
-        # During condense phase, backgrounds spiral in and shrink to nothing
-        if t < 1.0:
-            bg_t = t * 1.2
+        now = time.time() - start
+        t = min(now / duration, 1.0)
+
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                game.quit()
+                return
+
+        portal_pulse = min(1.0, t / 0.35)
+        suck_t = max(0.0, min(1.0, (t - 0.2) / 0.6))
+        invert_t = max(0.0, min(1.0, (t - 0.6) / 0.25))
+        explode_t = max(0.0, min(1.0, (t - 0.8) / 0.2))
+
+        game.screen.fill((6, 4, 12))
+
+        if bg_surfs:
+            for idx, bg in enumerate(bg_surfs):
+                angle = math.sin(t * 2.0 + idx) * 2.5
+                scale = 1.0 + 0.08 * math.sin(t * 3.0 + idx)
+                bg_scaled = pygame.transform.rotozoom(bg, angle, scale)
+                rect = bg_scaled.get_rect(center=portal_pos)
+                game.screen.blit(bg_scaled, rect)
         else:
-            # During condense, continue shrinking backgrounds to 0
-            condense_elapsed = 0
-            condense_t = 0
-            if condensing:
-                condense_elapsed = time.time() - condense_start
-                condense_t = min(condense_elapsed / condense_duration, 1.0)
-            bg_t = 1.0 + condense_t  # smoothly go from 1.0 to 2.0 as condense progresses
-        for bg in bg_sprites:
-            # As bg_t goes from 0 to 2, scale goes from 0.35 to 0
-            spiral_t = min(bg_t, 2.0)
-            scale = max(0.0, 0.35 * (1.0 - 0.5 * spiral_t))  # shrink to 0 as bg_t approaches 2
-            # Interpolate from offscreen start to portal center
-            spiral_angle = bg['angle'] + 6 * (1 - min(spiral_t, 1.0))
-            # Lerp from start (offscreen) to portal as spiral_t goes 0->1, then spiral in further as it condenses
-            if spiral_t < 1.0:
-                lerp = spiral_t
-                start_x, start_y = bg['start']
-                cx = int(start_x + (portal_pos[0] - start_x) * lerp)
-                cy = int(start_y + (portal_pos[1] - start_y) * lerp)
-            else:
-                # After reaching portal, spiral in further (shrink radius)
-                shrink_t = spiral_t - 1.0
-                cx = portal_pos[0]
-                cy = portal_pos[1]
-            if scale > 0.01:
-                img = pygame.transform.smoothscale(bg['image'], (max(1, int(bg['rect'].width * scale)), max(1, int(bg['rect'].height * scale))))
-                rect = img.get_rect(center=(cx, cy))
-                game.screen.blit(img, rect)
-        # Draw objects spiraling and shrinking to portal
-        for obj in obj_sprites:
-            spiral_t = t * 1.1 + random.uniform(-0.05, 0.05)
-            # Start bigger, shrink to 0.16 (2.0 -> 0.16)
-            scale = max(0.16, 2.0 - 1.84 * spiral_t)
-            spiral_angle = obj['angle'] + 8 * (1 - spiral_t)
-            radius = (1 - spiral_t) * spiral_radius
-            cx = int(portal_pos[0] + math.cos(spiral_angle) * radius)
-            cy = int(portal_pos[1] + math.sin(spiral_angle) * radius)
-            img = pygame.transform.smoothscale(obj['image'], (max(2, int(obj['rect'].width * scale)), max(2, int(obj['rect'].height * scale))))
-            rect = img.get_rect(center=(cx, cy))
-            game.screen.blit(img, rect)
-        # Draw portal using world10 portal texture
-        portal_radius = int(60 + 40 * (1-t))
-        portal_img = game.assets.portal_texture(10)
-        portal_img = pygame.transform.smoothscale(portal_img, (portal_radius*2, portal_radius*2))
-        portal_rect = portal_img.get_rect(center=portal_pos)
-        game.screen.blit(portal_img, portal_rect)
-        # Suck-in effect
-        if t >= 1.0:
-            if not condensing:
-                condensing = True
-                condense_start = time.time()
-                # (SFX removed)
-            condense_elapsed = time.time() - condense_start
-            condense_t = min(condense_elapsed / condense_duration, 1.0)
-            # Draw condensing portal using world10 texture, shrink to 0, then black screen
-            condense_radius = int(portal_radius * (1.0 - condense_t))
-            game.screen.fill((0, 0, 0))
-            if condense_t < 1.0:
-                portal_img = game.assets.portal_texture(10)
-                portal_img = pygame.transform.smoothscale(portal_img, (max(2, condense_radius*2), max(2, condense_radius*2)))
-                portal_rect = portal_img.get_rect(center=portal_pos)
-                game.screen.blit(portal_img, portal_rect)
-            # Only show particles/glow while condensing
-            if condense_t > 0.5 and condense_t < 1.0:
-                glow = pygame.Surface(game.screen.get_size(), pygame.SRCALPHA)
-                pygame.draw.circle(glow, (180, 80, 255, int(120 * (1-condense_t))), portal_pos, condense_radius + 30)
-                game.screen.blit(glow, (0, 0))
-            # Add particles
-            if condense_t < 1.0 and len(particles) < 300:
-                for _ in range(10):
-                    angle = random.uniform(0, 2 * math.pi)
-                    speed = random.uniform(6, 18)
-                    color = (255, random.randint(80, 200), 0)
-                    particles.append({
-                        'x': portal_pos[0],
-                        'y': portal_pos[1],
-                        'vx': math.cos(angle) * speed,
-                        'vy': math.sin(angle) * speed,
-                        'color': color,
-                        'life': random.uniform(0.7, 1.5)
-                    })
-            # Update and draw particles
-            for p in particles:
-                p['x'] += p['vx']
-                p['y'] += p['vy']
-                p['vx'] *= 0.96
-                p['vy'] *= 0.96
-                p['life'] -= 0.03
-                if p['life'] > 0 and condense_t < 1.0:
-                    pygame.draw.circle(game.screen, p['color'], (int(p['x']), int(p['y'])), 3)
-            particles[:] = [p for p in particles if p['life'] > 0]
-            pygame.display.flip()
-            # When fully condensed, hold black screen for 3 seconds before explosion, fading out particles
-            if condense_t >= 1.0:
-                # (SFX removed)
-                wait_start = time.time()
-                wait_duration = 3.0
-                while game.running and (time.time() - wait_start < wait_duration):
-                    pygame.event.pump()
-                    game.screen.fill((0, 0, 0))
-                    # Fade out remaining particles
-                    fade_t = (time.time() - wait_start) / wait_duration
-                    for p in particles:
-                        # Fade out alpha as time passes
-                        if p['life'] > 0:
-                            alpha = max(0, int(255 * (1.0 - fade_t)))
-                            color = p['color'][:3] if isinstance(p['color'], (tuple, list)) else p['color']
-                            surf = pygame.Surface((7, 7), pygame.SRCALPHA)
-                            pygame.draw.circle(surf, color + (alpha,), (3, 3), 3)
-                            game.screen.blit(surf, (int(p['x'])-3, int(p['y'])-3))
-                        # Slowly reduce life so they disappear
-                        p['life'] -= 0.03 + 0.07 * fade_t
-                    particles[:] = [p for p in particles if p['life'] > 0]
-                    pygame.display.flip()
-                    clock.tick(TARGET_FPS)
-                # (SFX removed)
-                exploded = True
-                explosion_start = time.time()
-                break
-        else:
-            pygame.display.flip()
+            band_h = SCREEN_HEIGHT // 12
+            for i in range(12):
+                shade = 20 + i * 12
+                pygame.draw.rect(game.screen, (shade, 0, shade + 20), (0, i * band_h, SCREEN_WIDTH, band_h))
+
+        if game.settings["glitch_fx"]:
+            for _ in range(14):
+                y = random.randint(0, SCREEN_HEIGHT - 6)
+                h = random.randint(2, 6)
+                pygame.draw.rect(game.screen, (random.randint(120, 255), 0, random.randint(120, 255)), (0, y, SCREEN_WIDTH, h), width=0)
+
+        for obj in obj_surfs:
+            rect = obj.get_rect()
+            angle = random.random() * math.tau
+            radius = (1 - suck_t) * max(SCREEN_WIDTH, SCREEN_HEIGHT) * 0.75
+            cx = int(portal_pos[0] + math.cos(angle) * radius)
+            cy = int(portal_pos[1] + math.sin(angle) * radius)
+            scale = max(0.22, 1.2 - suck_t)
+            obj_scaled = pygame.transform.smoothscale(obj, (max(2, int(rect.width * scale)), max(2, int(rect.height * scale))))
+            obj_rect = obj_scaled.get_rect(center=(cx, cy))
+            game.screen.blit(obj_scaled, obj_rect)
+
+        pulse_scale = 1.0 + 0.22 * math.sin(t * 8.0)
+        portal_surf = pygame.transform.smoothscale(portal_tex, (int(portal_tex.get_width() * pulse_scale), int(portal_tex.get_height() * pulse_scale)))
+        portal_rect = portal_surf.get_rect(center=portal_pos)
+        game.screen.blit(portal_surf, portal_rect, special_flags=pygame.BLEND_ADD)
+
+        if invert_t > 0 and not inversion_triggered:
+            inversion_triggered = True
+            try:
+                game.sound.play_event("glitch_effect")
+            except Exception:
+                pass
+        if invert_t > 0:
+            inv_alpha = int(140 * invert_t)
+            inv = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+            inv.fill((255, 255, 255, inv_alpha))
+            game.screen.blit(inv, (0, 0), special_flags=pygame.BLEND_SUB)
+
+        if explode_t > 0 and not explosion_triggered:
+            explosion_triggered = True
+            try:
+                game.sound.play_event("collapse_boom")
+            except Exception:
+                pass
+        if explode_t > 0:
+            flash_alpha = max(0, 255 - int(explode_t * 255))
+            flash = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+            flash.fill((255, 240, 255, flash_alpha))
+            game.screen.blit(flash, (0, 0))
+            alive = []
+            for d in debris:
+                d["life"] -= 1 / TARGET_FPS
+                if d["life"] <= 0:
+                    continue
+                d["pos"] += d["vel"]
+                d["vel"] *= 0.9
+                pygame.draw.rect(game.screen, d["color"], (int(d["pos"].x), int(d["pos"].y), 3, 3))
+                alive.append(d)
+            debris = alive
+
+        vignette = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+        for i in range(12):
+            alpha = int(12 * (i + 1))
+            pygame.draw.rect(vignette, (0, 0, 0, alpha), (i * 4, i * 4, SCREEN_WIDTH - i * 8, SCREEN_HEIGHT - i * 8), width=6)
+        game.screen.blit(vignette, (0, 0))
+
+        pygame.display.flip()
         clock.tick(TARGET_FPS)
 
-    # Explosion phase (after condensing)
-    if exploded:
-        explosion_duration = 2.5
-        fadeout_duration = 1.2
-        explosion_start = time.time()
-        fadeout_started = False
-        fadeout_start = 0
-        while game.running:
-            pygame.event.pump()
-            explosion_elapsed = time.time() - explosion_start
-            explosion_t = min(explosion_elapsed / explosion_duration, 1.0)
-            game.screen.fill((0, 0, 0))
-            # Draw a huge, animated explosion with many particles
-            for i in range(120):
-                angle = 2 * math.pi * (i / 120.0) + random.uniform(-0.1, 0.1)
-                dist = int(80 + 320 * explosion_t + random.randint(-20, 20))
-                x = portal_pos[0] + int(math.cos(angle) * dist)
-                y = portal_pos[1] + int(math.sin(angle) * dist)
-                color = (255, random.randint(80, 200), 0)
-                pygame.draw.circle(game.screen, color, (x, y), int(18 + 30 * (1 - explosion_t)))
-            # Extra explosion particles
-            for _ in range(40):
-                angle = random.uniform(0, 2 * math.pi)
-                speed = random.uniform(10, 30)
-                color = (255, random.randint(80, 200), 0)
-                particles.append({
-                    'x': portal_pos[0],
-                    'y': portal_pos[1],
-                    'vx': math.cos(angle) * speed,
-                    'vy': math.sin(angle) * speed,
-                    'color': color,
-                    'life': random.uniform(0.7, 1.5)
-                })
-            for p in particles:
-                p['x'] += p['vx']
-                p['y'] += p['vy']
-                p['vx'] *= 0.95
-                p['vy'] *= 0.95
-                p['life'] -= 0.04
-                if p['life'] > 0:
-                    pygame.draw.circle(game.screen, p['color'], (int(p['x']), int(p['y'])), 4)
-            particles[:] = [p for p in particles if p['life'] > 0]
-            flash = pygame.Surface(game.screen.get_size())
-            flash.fill((255, 255, 255))
-            flash.set_alpha(int(180 * (1 - explosion_t)))
-            game.screen.blit(flash, (0, 0))
-            # Smooth fade to white after explosion
-            if explosion_t >= 1.0 and not fadeout_started:
-                fadeout_started = True
-                fadeout_start = time.time()
-            if fadeout_started:
-                fadeout_elapsed = time.time() - fadeout_start
-                fade_alpha = min(255, int(255 * (fadeout_elapsed / fadeout_duration)))
-                fade = pygame.Surface(game.screen.get_size())
-                fade.fill((255, 255, 255))
-                fade.set_alpha(fade_alpha)
-                game.screen.blit(fade, (0, 0))
-                if fade_alpha >= 255:
-                    pygame.display.flip()
-                    pygame.time.wait(400)
-                    break
-            pygame.display.flip()
-            clock.tick(TARGET_FPS)
+        if t >= 1.0 and not debris:
+            break
+
+    game.change_scene(CreditsScene, ending_mode=True)
 
 # ---------------------------------------------------------------------------
 # Game controller
@@ -8864,10 +9361,9 @@ class Game:
         self.last_scene = getattr(self, "scene", None)
         self.scene = LevelEditorScene(self, getattr(self, "world", 1), getattr(self, "level", 1))
     def __init__(self):
-        import seizure_warning
         pygame.init()
         self.screen = pygame.display.set_mode(SCREEN_SIZE)
-        seizure_warning.show_seizure_warning(self.screen)
+        show_seizure_warning(self.screen)
         try:
             pygame.mixer.init()
         except Exception as exc:
