@@ -3718,7 +3718,7 @@ class Boss(pygame.sprite.Sprite):
             surf = pygame.Surface((18, 18), pygame.SRCALPHA)
             pygame.draw.circle(surf, (255, 200, 120), (9, 9), 9)
             pygame.draw.circle(surf, (255, 255, 255), (9, 9), 5)
-        self.projectile_surface = surf
+            self.projectile_surface = surf
         self.facing_direction = 1
         self.phase = 1
         self.is_final_boss = self.world == 10

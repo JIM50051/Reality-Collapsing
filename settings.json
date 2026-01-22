@@ -25,5 +25,13 @@
     "accept": 0,
     "back": 1
   },
-  "character": "player"
+  "character": "player",
+  "skills": {
+    "rapid_charge": false,
+    "blast_radius": false,
+    "shield_pulse": false,
+    "reflective_shield": false,
+    "stagger": false,
+    "extra_health_levels": 0
+  }
 }
