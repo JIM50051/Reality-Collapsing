@@ -7,6 +7,7 @@ import random
 import time
 import json
 import colorsys
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, List, Optional, Set, Tuple
@@ -38,6 +39,10 @@ OBJECT_DIR = ASSET_DIR / "objects"
 PLATFORM_DIR = ASSET_DIR / "platforms"
 HAT_DIR = ASSET_DIR / "hats"
 TRAIL_DIR = ASSET_DIR / "trails"
+INPUT_ICON_DIR = ASSET_DIR / "input buttons"
+KB_ICON_DIR = INPUT_ICON_DIR / "Keyboard_Mouse" / "Retro"
+MOUSE_ICON_DIR = KB_ICON_DIR
+XGAMEPAD_ICON_DIR = INPUT_ICON_DIR / "XGamepad" / "Default"
 SOUND_DIR = ASSET_DIR / "sounds"
 MUSIC_DIR = ASSET_DIR / "music"
 SAVE_FILE = BASE_DIR / "save_data.txt"
@@ -356,6 +361,165 @@ def draw_glitch_text(surface, font, text, y, color, glitch_fx=False, *args, **kw
     surface.blit(rendered, rect)
 
 
+_INPUT_ICON_CACHE: Dict[Path, pygame.Surface] = {}
+_INPUT_ICON_SCALED: Dict[Tuple[Path, int], pygame.Surface] = {}
+
+
+def _load_input_icon(path: Path, height: int) -> Optional[pygame.Surface]:
+    if height <= 0:
+        return None
+    key = (path, height)
+    if key in _INPUT_ICON_SCALED:
+        return _INPUT_ICON_SCALED[key].copy()
+    base = _INPUT_ICON_CACHE.get(path)
+    if base is None:
+        if not path.exists():
+            _INPUT_ICON_CACHE[path] = None
+            return None
+        try:
+            base = pygame.image.load(str(path)).convert_alpha()
+        except Exception:
+            _INPUT_ICON_CACHE[path] = None
+            return None
+        _INPUT_ICON_CACHE[path] = base
+    if base is None:
+        return None
+    scale = height / float(base.get_height())
+    width = max(1, int(base.get_width() * scale))
+    scaled = pygame.transform.smoothscale(base, (width, height))
+    _INPUT_ICON_SCALED[key] = scaled
+    return scaled.copy()
+
+
+def _input_icon_paths_for_token(token: str, device: str) -> Optional[List[Path]]:
+    key = token.upper()
+    if key == "WASD":
+        return [
+            KB_ICON_DIR / "T_W_Key_Retro.png",
+            KB_ICON_DIR / "T_A_Key_Retro.png",
+            KB_ICON_DIR / "T_S_Key_Retro.png",
+            KB_ICON_DIR / "T_D_Key_Retro.png",
+        ]
+
+    if device == "controller":
+        controller_map = {
+            "A": XGAMEPAD_ICON_DIR / "T_X_A_Color.png",
+            "B": XGAMEPAD_ICON_DIR / "T_X_B_Color.png",
+            "X": XGAMEPAD_ICON_DIR / "T_X_X_Color.png",
+            "Y": XGAMEPAD_ICON_DIR / "T_X_Y_Color.png",
+            "LB": XGAMEPAD_ICON_DIR / "T_X_LB.png",
+            "RB": XGAMEPAD_ICON_DIR / "T_X_RB.png",
+            "LT": XGAMEPAD_ICON_DIR / "T_X_LT.png",
+            "RT": XGAMEPAD_ICON_DIR / "T_X_RT.png",
+            "START": XGAMEPAD_ICON_DIR / "T_X_Share.png",
+            "BACK": XGAMEPAD_ICON_DIR / "T_X_Share-1.png",
+            "LSTICK": XGAMEPAD_ICON_DIR / "T_X_L_2D.png",
+            "RSTICK": XGAMEPAD_ICON_DIR / "T_X_R_2D.png",
+            "DPAD": XGAMEPAD_ICON_DIR / "T_X_Dpad.png",
+            "UP": XGAMEPAD_ICON_DIR / "T_X_Dpad_Up.png",
+            "DOWN": XGAMEPAD_ICON_DIR / "T_X_Dpad_Down.png",
+            "LEFT": XGAMEPAD_ICON_DIR / "T_X_Dpad_Left.png",
+            "RIGHT": XGAMEPAD_ICON_DIR / "T_X_Dpad_Right.png",
+        }
+        path = controller_map.get(key)
+        return [path] if path else None
+
+    keyboard_map = {
+        "ENTER": KB_ICON_DIR / "T_Enter_Key_Retro.png",
+        "ESC": KB_ICON_DIR / "T_Esc_Key_Retro.png",
+        "ESCAPE": KB_ICON_DIR / "T_Esc_Key_Retro.png",
+        "SPACE": KB_ICON_DIR / "T_Space_Key_Retro.png",
+        "SHIFT": KB_ICON_DIR / "T_Shift_Key_Retro.png",
+        "CTRL": KB_ICON_DIR / "T_Crtl_Key_Retro.png",
+        "CONTROL": KB_ICON_DIR / "T_Crtl_Key_Retro.png",
+        "TAB": KB_ICON_DIR / "T_Tab_Key_Retro.png",
+        "BACKSPACE": KB_ICON_DIR / "T_BackSpace_Key_Retro.png",
+        "DEL": KB_ICON_DIR / "T_Del_Key_Retro.png",
+        "DELETE": KB_ICON_DIR / "T_Del_Key_Retro.png",
+        "PGUP": KB_ICON_DIR / "T_PageUp_Key_Retro.png",
+        "PGDN": KB_ICON_DIR / "T_PageDown_Key_Retro.png",
+        "PAGEUP": KB_ICON_DIR / "T_PageUp_Key_Retro.png",
+        "PAGEDOWN": KB_ICON_DIR / "T_PageDown_Key_Retro.png",
+        "HOME": KB_ICON_DIR / "T_Home_Key_Retro.png",
+        "END": KB_ICON_DIR / "T_End_Key_Retro.png",
+        "UP": KB_ICON_DIR / "T_Up_Key_Retro.png",
+        "DOWN": KB_ICON_DIR / "T_Down_Key_Retro.png",
+        "LEFT": KB_ICON_DIR / "T_Left_Key_Retro.png",
+        "RIGHT": KB_ICON_DIR / "T_Right_Key_Retro.png",
+        "ARROWS": KB_ICON_DIR / "T_Cursor_Key_Retro.png",
+        "ARROW": KB_ICON_DIR / "T_Cursor_Key_Retro.png",
+        "MOUSE": MOUSE_ICON_DIR / "T_Mouse_Simple_Key_Retro.png",
+        "CLICK": MOUSE_ICON_DIR / "T_Mouse_Left_Key_Retro.png",
+        "LMB": MOUSE_ICON_DIR / "T_Mouse_Left_Key_Retro.png",
+        "RMB": MOUSE_ICON_DIR / "T_Mouse_Right_Key_Retro.png",
+        "KEY": KB_ICON_DIR / "T_Keyboard_Mouse_Key_Retro_Sprite.png",
+    }
+    path = keyboard_map.get(key)
+    if path:
+        return [path]
+    if len(key) == 1 and key.isalpha():
+        letter_path = KB_ICON_DIR / f"T_{key}_Key_Retro.png"
+        return [letter_path]
+    return None
+
+
+def _tokenize_prompt(text: str) -> List[str]:
+    return re.findall(r"\\s+|[A-Za-z0-9]+|[^\\w\\s]", text)
+
+
+def draw_prompt_with_icons(
+    surface: pygame.Surface,
+    font: pygame.font.Font,
+    text: str,
+    y: int,
+    color: Tuple[int, int, int],
+    device: str = "keyboard",
+    x: Optional[int] = None,
+) -> None:
+    icon_height = int(font.get_height() * 0.9)
+    segments: List[Tuple[str, object]] = []
+    for token in _tokenize_prompt(text):
+        if token.isspace():
+            segments.append(("text", token))
+            continue
+        if re.match(r"^[A-Za-z0-9]+$", token):
+            paths = _input_icon_paths_for_token(token, device)
+            if paths:
+                for path in paths:
+                    segments.append(("icon", path))
+                continue
+        segments.append(("text", token))
+
+    surfaces: List[pygame.Surface] = []
+    total_width = 0
+    for seg_type, value in segments:
+        if seg_type == "text":
+            rendered = font.render(str(value), True, color)
+        else:
+            rendered = _load_input_icon(Path(value), icon_height)
+            if rendered is None:
+                rendered = font.render(str(value), True, color)
+        surfaces.append(rendered)
+        total_width += rendered.get_width()
+
+    if x is None:
+        cursor_x = (surface.get_width() - total_width) // 2
+    else:
+        cursor_x = x
+    icon_gap = max(2, icon_height // 8)
+    prev_icon = False
+    for idx, rendered in enumerate(surfaces):
+        is_icon = segments[idx][0] == "icon"
+        if prev_icon and is_icon:
+            cursor_x += icon_gap
+        rect = rendered.get_rect()
+        rect.midleft = (cursor_x, y)
+        rect.centery = y
+        surface.blit(rendered, rect)
+        cursor_x += rendered.get_width()
+        prev_icon = is_icon
+
+
 # === Startup warning ===
 def show_seizure_warning(screen, duration=3.5):
     # Ensure controllers are initialised so gamepad input works here
@@ -388,11 +552,17 @@ def show_seizure_warning(screen, duration=3.5):
         screen.fill((0, 0, 0))
         text_surface = font.render(warning_text, True, (255, 0, 0))
         info_surface = small_font.render(info_text, True, WHITE)
-        cont_surface = small_font.render(continue_prompt(), True, WHITE)
         screen.blit(text_surface, (SCREEN_SIZE[0]//2 - text_surface.get_width()//2, SCREEN_SIZE[1]//2 - 100))
         screen.blit(info_surface, (SCREEN_SIZE[0]//2 - info_surface.get_width()//2, SCREEN_SIZE[1]//2))
         if shown_continue:
-            screen.blit(cont_surface, (SCREEN_SIZE[0]//2 - cont_surface.get_width()//2, SCREEN_SIZE[1]//2 + 80))
+            draw_prompt_with_icons(
+                screen,
+                small_font,
+                continue_prompt(),
+                SCREEN_SIZE[1] // 2 + 80,
+                WHITE,
+                device=last_input_device,
+            )
         pygame.display.flip()
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -663,20 +833,20 @@ TRAIL_COLORS: Dict[str, Tuple[int, int, int]] = {
 }
 
 TRAIL_STYLES: Dict[str, Dict[str, Any]] = {
-    "Glitter": {"life": 0.5, "size": 12, "jitter": 6, "count": 4, "tex_scale": 0.5},
-    "Cyber": {"life": 0.45, "size": 12, "jitter": 3, "count": 1, "tex_scale": 0.6},
-    "Ghost": {"life": 0.7, "size": 16, "jitter": 2, "count": 1, "tex_scale": 0.7},
-    "Inferno": {"life": 0.38, "size": 14, "jitter": 5, "count": 2, "tex_scale": 0.6},
-    "Verdant": {"life": 0.5, "size": 14, "jitter": 4, "count": 1, "tex_scale": 0.6},
-    "Stone": {"life": 0.6, "size": 12, "jitter": 2, "count": 1, "tex_scale": 0.6},
-    "Dune": {"life": 0.52, "size": 13, "jitter": 4, "count": 1, "tex_scale": 0.6},
-    "Thorn": {"life": 0.5, "size": 13, "jitter": 4, "count": 1, "tex_scale": 0.6},
-    "Frost": {"life": 0.58, "size": 14, "jitter": 3, "count": 1, "tex_scale": 0.6},
-    "Ember": {"life": 0.45, "size": 14, "jitter": 5, "count": 2, "tex_scale": 0.6},
-    "Sky": {"life": 0.5, "size": 13, "jitter": 4, "count": 1, "tex_scale": 0.6},
-    "Circuit": {"life": 0.45, "size": 12, "jitter": 3, "count": 1, "tex_scale": 0.6},
-    "Spectral": {"life": 0.75, "size": 16, "jitter": 2, "count": 1, "tex_scale": 0.7},
-    "Void": {"life": 0.62, "size": 14, "jitter": 3, "count": 1, "tex_scale": 0.6},
+    "Glitter": {"life": 0.5, "size": 18, "jitter": 6, "count": 4, "tex_scale": 0.8},
+    "Cyber": {"life": 0.45, "size": 18, "jitter": 3, "count": 1, "tex_scale": 0.9},
+    "Ghost": {"life": 0.7, "size": 22, "jitter": 2, "count": 1, "tex_scale": 1.0},
+    "Inferno": {"life": 0.38, "size": 20, "jitter": 5, "count": 2, "tex_scale": 0.9},
+    "Verdant": {"life": 0.5, "size": 20, "jitter": 4, "count": 1, "tex_scale": 0.9},
+    "Stone": {"life": 0.6, "size": 18, "jitter": 2, "count": 1, "tex_scale": 0.9},
+    "Dune": {"life": 0.52, "size": 19, "jitter": 4, "count": 1, "tex_scale": 0.9},
+    "Thorn": {"life": 0.5, "size": 19, "jitter": 4, "count": 1, "tex_scale": 0.9},
+    "Frost": {"life": 0.58, "size": 20, "jitter": 3, "count": 1, "tex_scale": 0.9},
+    "Ember": {"life": 0.45, "size": 20, "jitter": 5, "count": 2, "tex_scale": 0.9},
+    "Sky": {"life": 0.5, "size": 19, "jitter": 4, "count": 1, "tex_scale": 0.9},
+    "Circuit": {"life": 0.45, "size": 18, "jitter": 3, "count": 1, "tex_scale": 0.9},
+    "Spectral": {"life": 0.75, "size": 22, "jitter": 2, "count": 1, "tex_scale": 1.0},
+    "Void": {"life": 0.62, "size": 20, "jitter": 3, "count": 1, "tex_scale": 0.9},
 }
 
 HAT_COLORS: Dict[str, Tuple[int, int, int]] = {
@@ -1977,13 +2147,28 @@ class ColorWheelScene(Scene):
         pygame.draw.rect(surface, WHITE, preview_rect, width=3, border_radius=18)
 
         info_font = self.game.assets.font(22, False)
-        draw_center_text(surface, info_font, "Click the wheel to select a color.", SCREEN_HEIGHT // 2 + 120, WHITE)
-        draw_center_text(
+        draw_prompt_with_icons(
             surface,
             info_font,
-            "Press ENTER or Continue to start, ESC or Back to return.",
+            "Click the wheel to select a color.",
+            SCREEN_HEIGHT // 2 + 120,
+            WHITE,
+            device=getattr(self.game, "last_input_device", "mouse"),
+        )
+        device = getattr(self.game, "last_input_device", "keyboard")
+        if device == "controller":
+            prompt_text = "Press A to continue, B to return."
+        elif device == "mouse":
+            prompt_text = "Click Continue or Back to return."
+        else:
+            prompt_text = "Press ENTER or Continue to start, ESC or Back to return."
+        draw_prompt_with_icons(
+            surface,
+            info_font,
+            prompt_text,
             SCREEN_HEIGHT // 2 + 150,
             WHITE,
+            device=device,
         )
 
         # Draw buttons with hover effect
@@ -5573,9 +5758,16 @@ class DevConsole:
         ]
         hint_y = prompt_y - 6
         for text in hint_lines:
-            hint = hint_font.render(text, True, (150, 180, 210))
-            hint_y -= hint.get_height()
-            overlay.blit(hint, (padding, hint_y))
+            hint_y -= hint_font.get_height()
+            draw_prompt_with_icons(
+                overlay,
+                hint_font,
+                text,
+                hint_y + hint_font.get_height() // 2,
+                (150, 180, 210),
+                device="keyboard",
+                x=padding,
+            )
 
         surface.blit(overlay, rect.topleft)
     def update(self, dt: float) -> None:
@@ -6714,7 +6906,7 @@ class CreditScene(Scene):
                 prompt = "Click to continue"
             else:
                 prompt = "Press Enter/Space to continue"
-            draw_center_text(surface, prompt_font, prompt, SCREEN_HEIGHT - 80, WHITE)
+            draw_prompt_with_icons(surface, prompt_font, prompt, SCREEN_HEIGHT - 80, WHITE, device=device)
 
 
 class CharacterCreationScene(Scene):
@@ -6895,12 +7087,12 @@ class CharacterCreationScene(Scene):
         hint_font = self.game.assets.font(20, False)
         device = getattr(self.game, "last_input_device", "keyboard")
         if device == "controller":
-            hint = "Move left stick / dpad to orbit | A to confirm | B to cancel"
+            hint = "LStick / Dpad to orbit | A to confirm | B to cancel"
         elif device == "mouse":
             hint = "Click/drag the wheel | Click Confirm or Back"
         else:
             hint = "Arrow keys to orbit | Enter to confirm | Esc to cancel"
-        draw_center_text(surface, hint_font, hint, SCREEN_HEIGHT - 50, (170, 170, 200))
+        draw_prompt_with_icons(surface, hint_font, hint, SCREEN_HEIGHT - 50, (170, 170, 200), device=device)
 
     # Drawing the button (appearance)
     def _draw_button(self, surface: pygame.Surface, rect: pygame.Rect, label: str, highlighted: bool) -> None:
@@ -7219,7 +7411,7 @@ class CreditsScene(Scene):
                 prompt_text = "Click to return to Title Screen"
             else:
                 prompt_text = "Press Enter to return to Title Screen"
-            draw_center_text(prompt_surf, pfont, prompt_text, 25, WHITE)
+            draw_prompt_with_icons(prompt_surf, pfont, prompt_text, 25, WHITE, device=device)
             if getattr(self.game.settings, "__getitem__", None) and self.game.settings["glitch_fx"]:
                 self.glitch_scanlines(prompt_surf)
                 if random.random() < 0.5:
@@ -7732,7 +7924,12 @@ class LevelSelectScene(Scene):
             draw_glitch_text(surface, font_mid, f"Level {self.level}", 320, WHITE, self.game.settings["glitch_fx"])
 
         if self.blink < 30:
-            draw_center_text(surface, font_small, "ENTER to start  |  ESC to return", 520, WHITE)
+            device = getattr(self.game, "last_input_device", "keyboard")
+            if device == "controller":
+                prompt_text = "A to start  |  B to return"
+            else:
+                prompt_text = "ENTER to start  |  ESC to return"
+            draw_prompt_with_icons(surface, font_small, prompt_text, 520, WHITE, device=device)
 
 
 
@@ -7944,13 +8141,52 @@ class CosmeticsShopScene(Scene):
             skills=self.game.skills,
             cosmetics=self.game.cosmetics,
         )
+        self._apply_live_cosmetics()
         self._refresh_items()
 
+    def _apply_live_cosmetics(self) -> None:
+        """Apply cosmetics to the active gameplay scene when shops are opened from pause."""
+        scene = getattr(self.game, "_pause_return_scene", None)
+        if not scene or not hasattr(scene, "player"):
+            return
+        player = scene.player
+        outfit_form = self.game.active_outfit_form()
+        player_color = self.game.active_outfit_color()
+        if outfit_form:
+            player_color = None
+        player.form_name = outfit_form
+        player.animations = player._load_frames()
+        if player.character_name == "player" and player_color:
+            player.tint_color = player_color
+            player._apply_color_tint(player_color)
+        else:
+            player.tint_color = None
+        current_frames = player.animations.get(player.state) or player.animations.get("idle")
+        if current_frames:
+            current_center = player.rect.center
+            player.image = current_frames[player.frame_index % len(current_frames)]
+            player.rect = player.image.get_rect(center=current_center)
+        if hasattr(scene, "trail_style"):
+            scene.trail_style = self.game.active_trail_style()
+            scene.trail_color = scene.trail_style["color"] if scene.trail_style else None
+            scene._player_trail = []
     def handle_event(self, event: pygame.event.Event) -> None:
         if event.type == pygame.QUIT:
             self.game.quit()
         elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-            self.game.change_scene(TitleScene)
+            pause_scene = getattr(self.game, "_pause_return_scene", None)
+            if pause_scene:
+                action = run_pause_menu(pause_scene)
+                if action == "menu":
+                    self.game.change_scene(TitleScene)
+                elif action == "quit":
+                    self.game.quit()
+                elif action == "shops":
+                    self.game.change_scene(ShopsHubScene, return_scene=pause_scene)
+                else:
+                    self.game.scene = pause_scene
+            else:
+                self.game.change_scene(TitleScene)
         else:
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 and self._tab_rects:
                 for idx, rect in enumerate(self._tab_rects):
@@ -8003,6 +8239,8 @@ class CosmeticsShopScene(Scene):
 
     def draw(self, surface: pygame.Surface) -> None:
         surface.fill((12, 12, 28))
+        if self.game.settings["glitch_fx"]:
+            _draw_glitch_overlay(surface)
         title_font = self.game.assets.font(48, True)
         draw_glitch_text(surface, title_font, "COSMETICS SHOP", 70, WHITE, self.game.settings["glitch_fx"])
         info_font = self.game.assets.font(24, False)
@@ -8123,20 +8361,43 @@ class SkillsShopScene(Scene):
         if event.type == pygame.QUIT:
             self.game.quit()
         elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-            self.game.change_scene(TitleScene)
+            pause_scene = getattr(self.game, "_pause_return_scene", None)
+            if pause_scene:
+                action = run_pause_menu(pause_scene)
+                if action == "menu":
+                    self.game.change_scene(TitleScene)
+                elif action == "quit":
+                    self.game.quit()
+                elif action == "shops":
+                    self.game.change_scene(ShopsHubScene, return_scene=pause_scene)
+                else:
+                    self.game.scene = pause_scene
+            else:
+                self.game.change_scene(TitleScene)
         else:
             result = self.menu.handle_event(event)
             if callable(result):
                 result()
                 return
             if result == "exit":
-                self.game.change_scene(TitleScene)
+                if self.return_scene:
+                    action = run_pause_menu(self.return_scene)
+                    if action == "menu":
+                        self.game.change_scene(TitleScene)
+                    elif action == "quit":
+                        self.game.quit()
+                    else:
+                        self.game.scene = self.return_scene
+                else:
+                    self.game.change_scene(TitleScene)
 
     def update(self, dt: float) -> None:
         pass
 
     def draw(self, surface: pygame.Surface) -> None:
         surface.fill((10, 10, 24))
+        if self.game.settings["glitch_fx"]:
+            _draw_glitch_overlay(surface)
         title_font = self.game.assets.font(48, True)
         draw_glitch_text(surface, title_font, "SKILLS SHOP", 140, WHITE, self.game.settings["glitch_fx"])
         info_font = self.game.assets.font(22, False)
@@ -8186,8 +8447,10 @@ class SkillsShopScene(Scene):
 
 class ShopsHubScene(Scene):
     """Hub menu to pick between Cosmetics and Skills shops."""
-    def __init__(self, game: "Game"):
+    def __init__(self, game: "Game", return_scene: Optional["GameplayScene"] = None):
         super().__init__(game)
+        self.return_scene = return_scene
+        self.game._pause_return_scene = return_scene
         self.menu = VerticalMenu(
             [
                 MenuEntry(lambda: "Cosmetics Shop", self._open_cosmetics),
@@ -8209,19 +8472,43 @@ class ShopsHubScene(Scene):
         if event.type == pygame.QUIT:
             self.game.quit()
         elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-            self.game.change_scene(TitleScene)
+            if self.return_scene:
+                action = run_pause_menu(self.return_scene)
+                if action == "menu":
+                    self.game.change_scene(TitleScene)
+                elif action == "quit":
+                    self.game.quit()
+                elif action == "shops":
+                    self.game.change_scene(ShopsHubScene, return_scene=self.return_scene)
+                else:
+                    self.game.scene = self.return_scene
+            else:
+                self.game.change_scene(TitleScene)
         else:
             result = self.menu.handle_event(event)
             if callable(result):
                 return result()
             if result == "exit":
-                self.game.change_scene(TitleScene)
+                if self.return_scene:
+                    action = run_pause_menu(self.return_scene)
+                    if action == "menu":
+                        self.game.change_scene(TitleScene)
+                    elif action == "quit":
+                        self.game.quit()
+                    elif action == "shops":
+                        self.game.change_scene(ShopsHubScene, return_scene=self.return_scene)
+                    else:
+                        self.game.scene = self.return_scene
+                else:
+                    self.game.change_scene(TitleScene)
 
     def update(self, dt: float) -> None:
         pass
 
     def draw(self, surface: pygame.Surface) -> None:
         surface.fill((12, 12, 26))
+        if self.game.settings["glitch_fx"]:
+            _draw_glitch_overlay(surface)
         title_font = self.game.assets.font(48, True)
         draw_glitch_text(surface, title_font, "SHOPS", 140, WHITE, self.game.settings["glitch_fx"])
         info_font = self.game.assets.font(22, False)
@@ -8399,20 +8686,19 @@ class GameplayScene(Scene):
         # Draw controls overlay at the top left
         font = pygame.font.SysFont("consolas", 18)
         controls = [
-            "[Left Click] Select Tool",
-            "[Left Click] Add Object",
-            "[Right Click] Delete Object",
-            "[Ctrl+S] Save",
-            "[Esc] Exit Editor (revert if not saved)",
-            "[P] Playtest/Return",
-            "[WASD/Arrows] Pan Camera",
-            "[Mouse] Move/Select/Drag"
+            "LMB Select Tool",
+            "LMB Add Object",
+            "RMB Delete Object",
+            "Ctrl+S Save",
+            "Esc Exit Editor (revert if not saved)",
+            "P Playtest/Return",
+            "WASD/Arrows Pan Camera",
+            "Mouse Move/Select/Drag"
         ]
         y = 10
         for ctrl in controls:
-            label = font.render(ctrl, True, (255,255,255))
-            surface.blit(label, (18, y))
-            y += label.get_height() + 2
+            draw_prompt_with_icons(surface, font, ctrl, y + font.get_height() // 2, (255, 255, 255), device="keyboard", x=18)
+            y += font.get_height() + 4
     def enable_level_editing(self):
         if hasattr(self, '_level_editor_enabled') and self._level_editor_enabled:
             return
@@ -8687,7 +8973,8 @@ class GameplayScene(Scene):
                 if action == "menu":
                     self.game.change_scene(TitleScene)
                 elif action == "shops":
-                    self.game.change_scene(ShopsHubScene)
+                    self.game._pause_return_scene = self
+                    self.game.change_scene(ShopsHubScene, return_scene=self)
                 elif action == "quit":
                     self.game.quit()
 
@@ -8891,7 +9178,7 @@ class GameplayScene(Scene):
             size = max(4, int(t["size"] * max(0.6, life_ratio)))
             if trail_name:
                 tex_scale = float(style.get("tex_scale", 0.6))
-                tex_size = max(10, int(size * tex_scale))
+                tex_size = max(14, int(size * tex_scale))
                 tex = self.game.assets.trail_texture(trail_name, (tex_size, tex_size))
             else:
                 tex = None
@@ -9040,6 +9327,7 @@ class GameplayScene(Scene):
 
     def _draw_tutorial_overlay(self, surface: pygame.Surface) -> None:
         font = self.game.assets.font(20, False)
+        device = getattr(self.game, "last_input_device", "keyboard")
         hints = [
             "Move with A / D or Arrow Keys",
             "Press SPACE to jump",
@@ -9047,8 +9335,12 @@ class GameplayScene(Scene):
             "Portals lead to the next challenge",
         ]
         for idx, text in enumerate(hints):
-            render = font.render(text, True, WHITE)
-            surface.blit(render, (32, 32 + idx * 28))
+            y = 32 + idx * 28
+            if "Press" in text or "Move with" in text or "Arrow" in text:
+                draw_prompt_with_icons(surface, font, text, y + font.get_height() // 2, WHITE, device=device, x=32)
+            else:
+                render = font.render(text, True, WHITE)
+                surface.blit(render, (32, y))
 
     def _advance_level(self) -> None:
         self.game.sound.play_event("level_complete")
@@ -9461,7 +9753,8 @@ class BossArenaScene(Scene):
                 if action == "menu":
                     self.game.change_scene(TitleScene)
                 elif action == "shops":
-                    self.game.change_scene(ShopsHubScene)
+                    self.game._pause_return_scene = self
+                    self.game.change_scene(ShopsHubScene, return_scene=self)
                 elif action == "quit":
                     self.game.quit()
             elif event.key == self.game.settings["key_map"].get("shield", pygame.K_LSHIFT) and self.state in ("fight", "exit"):
@@ -9773,8 +10066,15 @@ class BossArenaScene(Scene):
                 prompt_text = f"Press F to fire  |  Shield Cooldown: {self.shield_cooldown:0.1f}s"
             else:
                 prompt_text = "Press F to fire  |  Press Shift to shield"
-        prompt = self.game.assets.font(20, True).render(prompt_text, True, WHITE)
-        surface.blit(prompt, prompt.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT - 60)))
+        prompt_font = self.game.assets.font(20, True)
+        draw_prompt_with_icons(
+            surface,
+            prompt_font,
+            prompt_text,
+            SCREEN_HEIGHT - 60,
+            WHITE,
+            device=device,
+        )
         # Draw beam cooldown just below prompts
         cd_font = self.game.assets.font(18, False)
         beam_cd_text = f"Beam Cooldown: {self.beam_cooldown:0.1f}s" if self.beam_cooldown > 0 else "Beam Ready"
@@ -10079,7 +10379,7 @@ class BossArenaScene(Scene):
             size = max(4, int(t["size"] * max(0.6, life_ratio)))
             if trail_name:
                 tex_scale = float(style.get("tex_scale", 0.6))
-                tex_size = max(10, int(size * tex_scale))
+                tex_size = max(14, int(size * tex_scale))
                 tex = self.game.assets.trail_texture(trail_name, (tex_size, tex_size))
             else:
                 tex = None
@@ -10472,7 +10772,7 @@ class VictoryScene(Scene):
 
         draw_center_text(temp, font_big, "REALITY HAS COLLAPSED", 250, WHITE)
         draw_center_text(temp, font_mid, "YOU WIN", 320, WHITE)
-        draw_center_text(temp, font_small, "Press ENTER to return to Main Menu", 450, WHITE)
+        draw_prompt_with_icons(temp, font_small, "Press ENTER to return to Main Menu", 450, WHITE, device=getattr(self.game, "last_input_device", "keyboard"))
 
 
         # Use only level 8 glitches from CreditsScene for performance and style
@@ -11020,7 +11320,14 @@ class LevelEditorScene(Scene):
         # Optionally: add more elifs for other object types if needed
         # Draw UI text
         font = pygame.font.SysFont("consolas", 28)
-        draw_center_text(surface, font, f"Level Editor: Tool=[{self.selected_tool}] Tab=Cycle Ctrl+S=Save Space=Add Del=Remove Esc=Exit | WASD/Arrows=Pan", 40, (255,255,255))
+        draw_prompt_with_icons(
+            surface,
+            font,
+            f"Level Editor: Tool=[{self.selected_tool}] Tab=Cycle Ctrl+S=Save Space=Add Del=Remove Esc=Exit | WASD/Arrows=Pan",
+            40,
+            (255, 255, 255),
+            device=getattr(self.game, "last_input_device", "keyboard"),
+        )
 
 
 # === Game loop / application ===
