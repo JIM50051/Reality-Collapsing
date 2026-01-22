@@ -3515,6 +3515,10 @@ class Goal(pygame.sprite.Sprite):
         self.portal_type = portal_type or "normal"
         self.active = active
         self.base_image = self.image.copy()
+        self._anim_timer = 0.0
+        self.world = world or 1
+        self.lightning_color = WORLD_PORTAL_COLORS.get(self.world, (180, 220, 255))
+        self.opening = False
 
 class PlayerProjectile(pygame.sprite.Sprite):
     def __init__(self, x: int, y: int, facing_right: bool):
