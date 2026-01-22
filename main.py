@@ -40,7 +40,7 @@ PLATFORM_DIR = ASSET_DIR / "platforms"
 HAT_DIR = ASSET_DIR / "hats"
 TRAIL_DIR = ASSET_DIR / "trails"
 INPUT_ICON_DIR = ASSET_DIR / "input buttons"
-KB_ICON_DIR = INPUT_ICON_DIR / "Keyboard_Mouse" / "Retro"
+KB_ICON_DIR = INPUT_ICON_DIR / "Keyboard_Mouse" / "Dark"
 MOUSE_ICON_DIR = KB_ICON_DIR
 XGAMEPAD_ICON_DIR = INPUT_ICON_DIR / "XGamepad" / "Default"
 SOUND_DIR = ASSET_DIR / "sounds"
@@ -395,10 +395,10 @@ def _input_icon_paths_for_token(token: str, device: str) -> Optional[List[Path]]
     key = token.upper()
     if key == "WASD":
         return [
-            KB_ICON_DIR / "T_W_Key_Retro.png",
-            KB_ICON_DIR / "T_A_Key_Retro.png",
-            KB_ICON_DIR / "T_S_Key_Retro.png",
-            KB_ICON_DIR / "T_D_Key_Retro.png",
+            KB_ICON_DIR / "T_W_Key_Dark.png",
+            KB_ICON_DIR / "T_A_Key_Dark.png",
+            KB_ICON_DIR / "T_S_Key_Dark.png",
+            KB_ICON_DIR / "T_D_Key_Dark.png",
         ]
 
     if device == "controller":
@@ -425,40 +425,40 @@ def _input_icon_paths_for_token(token: str, device: str) -> Optional[List[Path]]
         return [path] if path else None
 
     keyboard_map = {
-        "ENTER": KB_ICON_DIR / "T_Enter_Key_Retro.png",
-        "ESC": KB_ICON_DIR / "T_Esc_Key_Retro.png",
-        "ESCAPE": KB_ICON_DIR / "T_Esc_Key_Retro.png",
-        "SPACE": KB_ICON_DIR / "T_Space_Key_Retro.png",
-        "SHIFT": KB_ICON_DIR / "T_Shift_Key_Retro.png",
-        "CTRL": KB_ICON_DIR / "T_Crtl_Key_Retro.png",
-        "CONTROL": KB_ICON_DIR / "T_Crtl_Key_Retro.png",
-        "TAB": KB_ICON_DIR / "T_Tab_Key_Retro.png",
-        "BACKSPACE": KB_ICON_DIR / "T_BackSpace_Key_Retro.png",
-        "DEL": KB_ICON_DIR / "T_Del_Key_Retro.png",
-        "DELETE": KB_ICON_DIR / "T_Del_Key_Retro.png",
-        "PGUP": KB_ICON_DIR / "T_PageUp_Key_Retro.png",
-        "PGDN": KB_ICON_DIR / "T_PageDown_Key_Retro.png",
-        "PAGEUP": KB_ICON_DIR / "T_PageUp_Key_Retro.png",
-        "PAGEDOWN": KB_ICON_DIR / "T_PageDown_Key_Retro.png",
-        "HOME": KB_ICON_DIR / "T_Home_Key_Retro.png",
-        "END": KB_ICON_DIR / "T_End_Key_Retro.png",
-        "UP": KB_ICON_DIR / "T_Up_Key_Retro.png",
-        "DOWN": KB_ICON_DIR / "T_Down_Key_Retro.png",
-        "LEFT": KB_ICON_DIR / "T_Left_Key_Retro.png",
-        "RIGHT": KB_ICON_DIR / "T_Right_Key_Retro.png",
-        "ARROWS": KB_ICON_DIR / "T_Cursor_Key_Retro.png",
-        "ARROW": KB_ICON_DIR / "T_Cursor_Key_Retro.png",
-        "MOUSE": MOUSE_ICON_DIR / "T_Mouse_Simple_Key_Retro.png",
-        "CLICK": MOUSE_ICON_DIR / "T_Mouse_Left_Key_Retro.png",
-        "LMB": MOUSE_ICON_DIR / "T_Mouse_Left_Key_Retro.png",
-        "RMB": MOUSE_ICON_DIR / "T_Mouse_Right_Key_Retro.png",
-        "KEY": KB_ICON_DIR / "T_Keyboard_Mouse_Key_Retro_Sprite.png",
+        "ENTER": KB_ICON_DIR / "T_Enter_Key_Dark.png",
+        "ESC": KB_ICON_DIR / "T_Esc_Key_Dark.png",
+        "ESCAPE": KB_ICON_DIR / "T_Esc_Key_Dark.png",
+        "SPACE": KB_ICON_DIR / "T_Space_Key_Dark.png",
+        "SHIFT": KB_ICON_DIR / "T_Shift_Key_Dark.png",
+        "CTRL": KB_ICON_DIR / "T_Crtl_Key_Dark.png",
+        "CONTROL": KB_ICON_DIR / "T_Crtl_Key_Dark.png",
+        "TAB": KB_ICON_DIR / "T_Tab_Key_Dark.png",
+        "BACKSPACE": KB_ICON_DIR / "T_BackSpace_Key_Dark.png",
+        "DEL": KB_ICON_DIR / "T_Del_Key_Dark.png",
+        "DELETE": KB_ICON_DIR / "T_Del_Key_Dark.png",
+        "PGUP": KB_ICON_DIR / "T_PageUp_Key_Dark.png",
+        "PGDN": KB_ICON_DIR / "T_PageDown_Key_Dark.png",
+        "PAGEUP": KB_ICON_DIR / "T_PageUp_Key_Dark.png",
+        "PAGEDOWN": KB_ICON_DIR / "T_PageDown_Key_Dark.png",
+        "HOME": KB_ICON_DIR / "T_Home_Key_Dark.png",
+        "END": KB_ICON_DIR / "T_End_Key_Dark.png",
+        "UP": KB_ICON_DIR / "T_Up_Key_Dark.png",
+        "DOWN": KB_ICON_DIR / "T_Down_Key_Dark.png",
+        "LEFT": KB_ICON_DIR / "T_Left_Key_Dark.png",
+        "RIGHT": KB_ICON_DIR / "T_Right_Key_Dark.png",
+        "ARROWS": KB_ICON_DIR / "T_Cursor_Key_Dark.png",
+        "ARROW": KB_ICON_DIR / "T_Cursor_Key_Dark.png",
+        "MOUSE": MOUSE_ICON_DIR / "T_Mouse_Simple_Key_Dark.png",
+        "CLICK": MOUSE_ICON_DIR / "T_Mouse_Left_Key_Dark.png",
+        "LMB": MOUSE_ICON_DIR / "T_Mouse_Left_Key_Dark.png",
+        "RMB": MOUSE_ICON_DIR / "T_Mouse_Right_Key_Dark.png",
+        "KEY": KB_ICON_DIR / "T_Keyboard_Mouse_Key_Sprite.png",
     }
     path = keyboard_map.get(key)
     if path:
         return [path]
     if len(key) == 1 and key.isalpha():
-        letter_path = KB_ICON_DIR / f"T_{key}_Key_Retro.png"
+        letter_path = KB_ICON_DIR / f"T_{key}_Key_Dark.png"
         return [letter_path]
     return None
 
@@ -541,10 +541,10 @@ def show_seizure_warning(screen, duration=3.5):
     last_input_device = "keyboard"
     def continue_prompt():
         if last_input_device == "controller":
-            return "Press A/Start to continue..."
+            return "Press A to continue..."
         if last_input_device == "mouse":
             return "Click to continue..."
-        return "Press any key to continue..."
+        return "Press Enter to continue..."
     start_time = pygame.time.get_ticks()
     shown_continue = False
     while True:
@@ -833,20 +833,20 @@ TRAIL_COLORS: Dict[str, Tuple[int, int, int]] = {
 }
 
 TRAIL_STYLES: Dict[str, Dict[str, Any]] = {
-    "Glitter": {"life": 0.5, "size": 18, "jitter": 6, "count": 4, "tex_scale": 0.8},
-    "Cyber": {"life": 0.45, "size": 18, "jitter": 3, "count": 1, "tex_scale": 0.9},
-    "Ghost": {"life": 0.7, "size": 22, "jitter": 2, "count": 1, "tex_scale": 1.0},
-    "Inferno": {"life": 0.38, "size": 20, "jitter": 5, "count": 2, "tex_scale": 0.9},
-    "Verdant": {"life": 0.5, "size": 20, "jitter": 4, "count": 1, "tex_scale": 0.9},
-    "Stone": {"life": 0.6, "size": 18, "jitter": 2, "count": 1, "tex_scale": 0.9},
-    "Dune": {"life": 0.52, "size": 19, "jitter": 4, "count": 1, "tex_scale": 0.9},
-    "Thorn": {"life": 0.5, "size": 19, "jitter": 4, "count": 1, "tex_scale": 0.9},
-    "Frost": {"life": 0.58, "size": 20, "jitter": 3, "count": 1, "tex_scale": 0.9},
-    "Ember": {"life": 0.45, "size": 20, "jitter": 5, "count": 2, "tex_scale": 0.9},
-    "Sky": {"life": 0.5, "size": 19, "jitter": 4, "count": 1, "tex_scale": 0.9},
-    "Circuit": {"life": 0.45, "size": 18, "jitter": 3, "count": 1, "tex_scale": 0.9},
-    "Spectral": {"life": 0.75, "size": 22, "jitter": 2, "count": 1, "tex_scale": 1.0},
-    "Void": {"life": 0.62, "size": 20, "jitter": 3, "count": 1, "tex_scale": 0.9},
+    "Glitter": {"life": 0.5, "size": 22, "jitter": 6, "count": 4, "tex_scale": 0.95},
+    "Cyber": {"life": 0.45, "size": 22, "jitter": 3, "count": 1, "tex_scale": 1.05},
+    "Ghost": {"life": 0.7, "size": 26, "jitter": 2, "count": 1, "tex_scale": 1.1},
+    "Inferno": {"life": 0.38, "size": 24, "jitter": 5, "count": 2, "tex_scale": 1.05},
+    "Verdant": {"life": 0.5, "size": 24, "jitter": 4, "count": 1, "tex_scale": 1.05},
+    "Stone": {"life": 0.6, "size": 22, "jitter": 2, "count": 1, "tex_scale": 1.0},
+    "Dune": {"life": 0.52, "size": 23, "jitter": 4, "count": 1, "tex_scale": 1.0},
+    "Thorn": {"life": 0.5, "size": 23, "jitter": 4, "count": 1, "tex_scale": 1.0},
+    "Frost": {"life": 0.58, "size": 24, "jitter": 3, "count": 1, "tex_scale": 1.05},
+    "Ember": {"life": 0.45, "size": 24, "jitter": 5, "count": 2, "tex_scale": 1.05},
+    "Sky": {"life": 0.5, "size": 23, "jitter": 4, "count": 1, "tex_scale": 1.0},
+    "Circuit": {"life": 0.45, "size": 22, "jitter": 3, "count": 1, "tex_scale": 1.0},
+    "Spectral": {"life": 0.75, "size": 26, "jitter": 2, "count": 1, "tex_scale": 1.1},
+    "Void": {"life": 0.62, "size": 24, "jitter": 3, "count": 1, "tex_scale": 1.05},
 }
 
 HAT_COLORS: Dict[str, Tuple[int, int, int]] = {
@@ -7935,8 +7935,11 @@ class LevelSelectScene(Scene):
 
 class CosmeticsShopScene(Scene):
     """Cosmetics shop for outfits, hats, and trails."""
-    def __init__(self, game: "Game"):
+    def __init__(self, game: "Game", return_scene: Optional["GameplayScene"] = None):
         super().__init__(game)
+        # Remember where we came from when opened via pause menu
+        self.return_scene = return_scene or getattr(self.game, "_pause_return_scene", None)
+        self.game._pause_return_scene = self.return_scene
         self.outfit_costs = {
             "None": 0,
             "Neon Runner": 15,
@@ -8023,6 +8026,19 @@ class CosmeticsShopScene(Scene):
         self.active_tab = tab_key
         self.selected_index = 0
         self._refresh_items()
+
+    def _switch_tab_by_delta(self, delta: int) -> None:
+        """Cycle tabs left/right (e.g., LB/RB on controllers)."""
+        if not self.tabs:
+            return
+        keys = [key for key, _ in self.tabs]
+        try:
+            idx = keys.index(self.active_tab)
+        except ValueError:
+            idx = 0
+        new_idx = (idx + delta) % len(keys)
+        self._switch_tab(keys[new_idx])
+        self.game.sound.play_event("menu_move")
 
     def _status(self, kind: str, name: str, cost: int) -> str:
         owned = name in self._owned(kind)
@@ -8229,6 +8245,48 @@ class CosmeticsShopScene(Scene):
                         self._buy_or_select(self.active_tab, name, cost)
                         self._ensure_selected_visible()
                         break
+            elif event.type == pygame.JOYHATMOTION:
+                hx, hy = event.value
+                moved = False
+                if hx == -1:
+                    self.selected_index = max(0, self.selected_index - 1)
+                    moved = True
+                elif hx == 1:
+                    self.selected_index = min(len(self.items) - 1, self.selected_index + 1)
+                    moved = True
+                if hy == 1:
+                    self.selected_index = max(0, self.selected_index - self._grid_cols)
+                    moved = True
+                elif hy == -1:
+                    self.selected_index = min(len(self.items) - 1, self.selected_index + self._grid_cols)
+                    moved = True
+                if moved:
+                    self.game.sound.play_event("menu_move")
+                    self._ensure_selected_visible()
+            elif event.type == pygame.JOYBUTTONDOWN:
+                btn = event.button
+                if btn == 4:  # LB
+                    self._switch_tab_by_delta(-1)
+                elif btn == 5:  # RB
+                    self._switch_tab_by_delta(1)
+                elif btn == 0:  # A -> buy/select
+                    if self.items:
+                        name, cost = self.items[self.selected_index]
+                        self._buy_or_select(self.active_tab, name, cost)
+                        self._ensure_selected_visible()
+                elif btn == 1:  # B -> exit
+                    if self.return_scene:
+                        action = run_pause_menu(self.return_scene)
+                        if action == "menu":
+                            self.game.change_scene(TitleScene)
+                        elif action == "quit":
+                            self.game.quit()
+                        elif action == "shops":
+                            self.game.change_scene(ShopsHubScene, return_scene=self.return_scene)
+                        else:
+                            self.game.scene = self.return_scene
+                    else:
+                        self.game.change_scene(TitleScene)
             elif event.type == pygame.MOUSEWHEEL:
                 if event.y != 0:
                     self.scroll_row = max(0, self.scroll_row - event.y)
@@ -8324,8 +8382,11 @@ class CosmeticsShopScene(Scene):
 
 class SkillsShopScene(Scene):
     """Skills shop with purchasable upgrades."""
-    def __init__(self, game: "Game"):
+    def __init__(self, game: "Game", return_scene: Optional["GameplayScene"] = None):
         super().__init__(game)
+        # Preserve where we came from so Back can return to pause menu gameplay when opened from there
+        self.return_scene = return_scene or getattr(self.game, "_pause_return_scene", None)
+        self.game._pause_return_scene = self.return_scene
         self.costs = {
             "rapid_charge": 5,
             "blast_radius": 8,
@@ -8466,7 +8527,7 @@ class ShopsHubScene(Scene):
 
     def _open_skills(self):
         self.game.sound.play_event("menu_confirm")
-        self.game.change_scene(SkillsShopScene)
+        self.game.change_scene(SkillsShopScene, return_scene=self.return_scene)
 
     def handle_event(self, event: pygame.event.Event) -> None:
         if event.type == pygame.QUIT:
@@ -11478,17 +11539,20 @@ class Game:
         current_scene = getattr(self, "scene", None)
         is_title = current_scene.__class__.__name__ == "TitleScene" if current_scene else False
         is_boss_scene = current_scene.__class__.__name__ == "BossArenaScene" if current_scene else False
+        is_cosmetics_shop = current_scene.__class__.__name__ == "CosmeticsShopScene" if current_scene else False
 
-        if menu_up_pressed:
-            pygame.event.post(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_UP))
-        if menu_down_pressed:
-            pygame.event.post(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_DOWN))
-        if accept_pressed:
-            pygame.event.post(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RETURN))
-        if back_pressed and not is_title:
-            pygame.event.post(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_ESCAPE))
-        if pause_pressed and not back_pressed and not is_title:
-            pygame.event.post(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_ESCAPE))
+        # Avoid injecting synthetic key events for shops to prevent double-moves (hat + injected KEYDOWN)
+        if not is_cosmetics_shop:
+            if menu_up_pressed:
+                pygame.event.post(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_UP))
+            if menu_down_pressed:
+                pygame.event.post(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_DOWN))
+            if accept_pressed:
+                pygame.event.post(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RETURN))
+            if back_pressed and not is_title:
+                pygame.event.post(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_ESCAPE))
+            if pause_pressed and not back_pressed and not is_title:
+                pygame.event.post(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_ESCAPE))
         if shoot_pressed:
             # Map controller shoot (X button) to keyboard F; if in boss scene, also flag last input device
             pygame.event.post(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_f))
