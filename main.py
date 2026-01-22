@@ -3188,13 +3188,12 @@ class Portal(pygame.sprite.Sprite):
     def update(self, dt: float = 1 / FPS) -> None:
         self._anim_timer += dt
         angle = (self._anim_timer * 40.0) % 360
-        pulse_base = 0.08 + (0.06 if self.opening else 0.0)
-        pulse = 1.0 + pulse_base * math.sin(self._anim_timer * 6.0)
+        pulse = 1.0 + 0.08 * math.sin(self._anim_timer * 6.0)
         new_image = pygame.transform.rotozoom(self.base_image, angle, pulse)
         center = self.rect.center
         electric = new_image.copy()
         arc_surface = pygame.Surface(electric.get_size(), pygame.SRCALPHA)
-        arc_count = 6 if self.opening else 3
+        arc_count = 3
         for _ in range(arc_count):
             x1 = random.randint(0, arc_surface.get_width() - 1)
             y1 = random.randint(0, arc_surface.get_height() - 1)
@@ -3518,7 +3517,6 @@ class Goal(pygame.sprite.Sprite):
         self._anim_timer = 0.0
         self.world = world or 1
         self.lightning_color = WORLD_PORTAL_COLORS.get(self.world, (180, 220, 255))
-        self.opening = False
 
 class PlayerProjectile(pygame.sprite.Sprite):
     def __init__(self, x: int, y: int, facing_right: bool):
@@ -7122,22 +7120,6 @@ class GameplayScene(Scene):
                 print("[DEBUG] Failsafe: Enabling flight in update() because cheat is active.")
                 if hasattr(self.player, "enable_flight"):
                     self.player.enable_flight()
-        # Handle portal opening delay before scene transition
-        if getattr(self, "portal_opening", False):
-            if self.content.goal:
-                self.content.goal.opening = True
-            if hasattr(self, "player"):
-                if hasattr(self.player, "velocity"):
-                    self.player.velocity.x = 0
-                    self.player.velocity.y = 0
-            self.portal_timer -= dt
-            if self.portal_timer <= 0:
-                self.portal_opening = False
-                action = self._pending_portal_action
-                self._pending_portal_action = None
-                if callable(action):
-                    action()
-                return
         # ...existing code...
     def enable_level_editing(self):
         if hasattr(self, '_level_editor_enabled') and self._level_editor_enabled:
@@ -7427,9 +7409,6 @@ class GameplayScene(Scene):
         if self.content.goal is None:
             self.content.goal = Goal(700, 520, self.world, self.game.assets)
         self.is_tower = self.level % 10 == 0
-        self.portal_opening = False
-        self.portal_timer = 0.0
-        self._pending_portal_action = None
         spawn_point = self._compute_spawn_point()
         # Use selected character if set, else fallback to settings or default
         character_name = getattr(self.game, "selected_character", None)
@@ -7745,17 +7724,11 @@ class GameplayScene(Scene):
 
         goal = self.content.goal
         if goal and self.player.rect.colliderect(goal.rect):
-            if not getattr(self, "portal_opening", False):
-                sound.play_event("portal_enter")
-                self.portal_opening = True
-                self.portal_timer = 0.65
-                if goal.portal_type == "boss":
-                    self._pending_portal_action = lambda: self.game.change_scene(BossArenaScene, world=self.world, level=self.level)
-                else:
-                    self._pending_portal_action = lambda: self._advance_level()
-                if goal:
-                    goal.opening = True
+            sound.play_event("portal_enter")
+            if goal.portal_type == "boss":
+                self.game.change_scene(BossArenaScene, world=self.world, level=self.level)
                 return
+            self._advance_level()
 
         if self.is_tower and self.tower_timer > 0:
             self.tower_timer -= dt
