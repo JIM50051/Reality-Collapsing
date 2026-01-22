@@ -37,6 +37,7 @@ BACKGROUND_DIR = ASSET_DIR / "backgrounds"
 OBJECT_DIR = ASSET_DIR / "objects"
 PLATFORM_DIR = ASSET_DIR / "platforms"
 HAT_DIR = ASSET_DIR / "hats"
+TRAIL_DIR = ASSET_DIR / "trails"
 SOUND_DIR = ASSET_DIR / "sounds"
 MUSIC_DIR = ASSET_DIR / "music"
 SAVE_FILE = BASE_DIR / "save_data.txt"
@@ -183,7 +184,11 @@ class VerticalMenu:
         menu_y = y if y is not None else max(logo_bottom + 12, (surface.get_height() - (entry_count * spacing)) // 2)
         selected = getattr(self, "selected", 0)
         panel_rect = pygame.Rect(menu_x - 24, menu_y - 24, menu_width + 48, spacing * entry_count + 24)
-        pygame.draw.rect(surface, (28, 28, 48, 220), panel_rect, border_radius=24)
+        panel_color = getattr(self, "panel_color", (28, 28, 48, 220))
+        panel_border_color = getattr(self, "panel_border_color", None)
+        pygame.draw.rect(surface, panel_color, panel_rect, border_radius=24)
+        if panel_border_color is not None:
+            pygame.draw.rect(surface, panel_border_color, panel_rect, 2, border_radius=24)
         highlight_color1 = (90, 120, 255)
         highlight_color2 = (180, 80, 255)
         entry_rects = []
@@ -613,36 +618,83 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
 }
 
 DEFAULT_COSMETICS: Dict[str, Any] = {
-    "outfit": "Default",
-    "trail": "Default",
-    "hat": "Default",
-    "owned_outfits": ["Default"],
-    "owned_trails": ["Default"],
-    "owned_hats": ["Default"],
+    "outfit": "None",
+    "trail": "None",
+    "hat": "None",
+    "owned_outfits": ["None"],
+    "owned_trails": ["None"],
+    "owned_hats": ["None"],
 }
 
 OUTFIT_COLORS: Dict[str, Tuple[int, int, int]] = {
-    "Default": (160, 220, 255),
+    "None": (160, 220, 255),
     "Neon Runner": (120, 255, 220),
     "Crimson Armor": (240, 90, 90),
     "Midnight": (90, 110, 200),
     "Gold": (240, 200, 90),
+    "Verdant": (80, 170, 110),
+    "Stone": (140, 140, 150),
+    "Dune": (210, 180, 120),
+    "Thorn": (90, 160, 110),
+    "Frost": (150, 190, 230),
+    "Ember": (210, 100, 70),
+    "Sky": (160, 210, 245),
+    "Circuit": (90, 210, 210),
+    "Spectral": (180, 160, 220),
+    "Void": (150, 80, 170),
 }
 
 TRAIL_COLORS: Dict[str, Tuple[int, int, int]] = {
-    "Default": (200, 240, 255),
+    "None": (200, 240, 255),
     "Glitter": (255, 220, 120),
     "Cyber": (120, 255, 200),
     "Ghost": (200, 200, 255),
     "Inferno": (255, 140, 80),
+    "Verdant": (120, 220, 140),
+    "Stone": (180, 180, 190),
+    "Dune": (240, 210, 150),
+    "Thorn": (130, 210, 150),
+    "Frost": (200, 230, 255),
+    "Ember": (255, 140, 90),
+    "Sky": (180, 230, 255),
+    "Circuit": (120, 255, 230),
+    "Spectral": (210, 190, 255),
+    "Void": (230, 140, 240),
+}
+
+TRAIL_STYLES: Dict[str, Dict[str, Any]] = {
+    "Glitter": {"life": 0.5, "size": 12, "jitter": 6, "count": 4, "tex_scale": 0.5},
+    "Cyber": {"life": 0.45, "size": 12, "jitter": 3, "count": 1, "tex_scale": 0.6},
+    "Ghost": {"life": 0.7, "size": 16, "jitter": 2, "count": 1, "tex_scale": 0.7},
+    "Inferno": {"life": 0.38, "size": 14, "jitter": 5, "count": 2, "tex_scale": 0.6},
+    "Verdant": {"life": 0.5, "size": 14, "jitter": 4, "count": 1, "tex_scale": 0.6},
+    "Stone": {"life": 0.6, "size": 12, "jitter": 2, "count": 1, "tex_scale": 0.6},
+    "Dune": {"life": 0.52, "size": 13, "jitter": 4, "count": 1, "tex_scale": 0.6},
+    "Thorn": {"life": 0.5, "size": 13, "jitter": 4, "count": 1, "tex_scale": 0.6},
+    "Frost": {"life": 0.58, "size": 14, "jitter": 3, "count": 1, "tex_scale": 0.6},
+    "Ember": {"life": 0.45, "size": 14, "jitter": 5, "count": 2, "tex_scale": 0.6},
+    "Sky": {"life": 0.5, "size": 13, "jitter": 4, "count": 1, "tex_scale": 0.6},
+    "Circuit": {"life": 0.45, "size": 12, "jitter": 3, "count": 1, "tex_scale": 0.6},
+    "Spectral": {"life": 0.75, "size": 16, "jitter": 2, "count": 1, "tex_scale": 0.7},
+    "Void": {"life": 0.62, "size": 14, "jitter": 3, "count": 1, "tex_scale": 0.6},
 }
 
 HAT_COLORS: Dict[str, Tuple[int, int, int]] = {
-    "Default": (200, 200, 200),
+    "None": (200, 200, 200),
     "Wizard": (120, 80, 200),
     "Pilot": (200, 120, 60),
     "Halo": (255, 230, 120),
     "Viking": (180, 120, 80),
+    "Verdant": (120, 200, 140),
+    "Stone": (160, 160, 170),
+    "Dune": (220, 180, 120),
+    "Thorn": (110, 190, 130),
+    "Frost": (170, 210, 240),
+    "Ember": (220, 120, 80),
+    "Sky": (170, 220, 250),
+    "Circuit": (100, 220, 220),
+    "Spectral": (190, 170, 230),
+    "Void": (170, 90, 190),
 }
 
 BG_COLORS = [
@@ -993,11 +1045,31 @@ class ProgressManager:
             if isinstance(cosmetics, dict):
                 base_c = DEFAULT_COSMETICS.copy()
                 base_c.update(cosmetics)
-                # Ensure owned lists always include Default
-                if "owned_outfits" in base_c and "Default" not in base_c["owned_outfits"]:
-                    base_c["owned_outfits"].insert(0, "Default")
-                if "owned_trails" in base_c and "Default" not in base_c["owned_trails"]:
-                    base_c["owned_trails"].insert(0, "Default")
+                # Migrate Default to None and ensure owned lists include None
+                if base_c.get("outfit") == "Default":
+                    base_c["outfit"] = "None"
+                if base_c.get("trail") == "Default":
+                    base_c["trail"] = "None"
+                if base_c.get("hat") == "Default":
+                    base_c["hat"] = "None"
+                if "owned_outfits" in base_c:
+                    owned_outfits = list(base_c["owned_outfits"])
+                    owned_outfits = ["None" if name == "Default" else name for name in owned_outfits]
+                    if "None" not in owned_outfits:
+                        owned_outfits.insert(0, "None")
+                    base_c["owned_outfits"] = owned_outfits
+                if "owned_trails" in base_c:
+                    owned_trails = list(base_c["owned_trails"])
+                    owned_trails = ["None" if name == "Default" else name for name in owned_trails]
+                    if "None" not in owned_trails:
+                        owned_trails.insert(0, "None")
+                    base_c["owned_trails"] = owned_trails
+                if "owned_hats" in base_c:
+                    owned_hats = list(base_c["owned_hats"])
+                    owned_hats = ["None" if name == "Default" else name for name in owned_hats]
+                    if "None" not in owned_hats:
+                        owned_hats.insert(0, "None")
+                    base_c["owned_hats"] = owned_hats
                 self.cosmetics = base_c
             # Load speedrun timer data if present
             game = getattr(self, 'game', None)
@@ -1079,6 +1151,8 @@ class AssetCache:
         self._portal_textures: Dict[Tuple[int, str], pygame.Surface] = {}
         self._hat_textures: Dict[str, pygame.Surface] = {}
         self._hat_scaled: Dict[Tuple[str, Tuple[int, int]], pygame.Surface] = {}
+        self._trail_textures: Dict[str, pygame.Surface] = {}
+        self._trail_scaled: Dict[Tuple[str, Tuple[int, int]], pygame.Surface] = {}
         self._title_logo_frames: Optional[List[pygame.Surface]] = None
         self._title_logo_durations: Optional[List[float]] = None
         self._title_logo_static: Optional[pygame.Surface] = None
@@ -1393,6 +1467,29 @@ class AssetCache:
 
         scaled = pygame.transform.smoothscale(base, size)
         self._hat_scaled[key] = scaled
+        return scaled.copy()
+
+    def trail_texture(self, trail: str, size: Tuple[int, int]) -> Optional[pygame.Surface]:
+        key = (trail, size)
+        if key in self._trail_scaled:
+            return self._trail_scaled[key].copy()
+
+        base = self._trail_textures.get(trail)
+        if base is None:
+            path = TRAIL_DIR / f"{trail}.png"
+            if path.exists():
+                try:
+                    base = pygame.image.load(path).convert_alpha()
+                except Exception as exc:
+                    print(f"[Assets] Failed to load trail {path}: {exc}")
+                    base = None
+            self._trail_textures[trail] = base
+
+        if base is None:
+            return None
+
+        scaled = pygame.transform.smoothscale(base, size)
+        self._trail_scaled[key] = scaled
         return scaled.copy()
 
     def _ensure_title_logo_assets(self) -> None:
@@ -2708,10 +2805,17 @@ class Player(pygame.sprite.Sprite):
         self.in_quicksand = False  # Track if player is in quicksand
 
     def _load_frames(self) -> Dict[str, List[pygame.Surface]]:
-        # If self.form_name exists, load from assets/characters/[character]/[form], else just assets/characters/[character]
+        # If self.form_name exists, load outfit assets when available, else use character/form folders.
         char_dir = ASSET_DIR / "characters" / self.character_name
         if hasattr(self, "form_name") and self.form_name:
-            char_dir = char_dir / self.form_name
+            if self.character_name == "player":
+                outfit_dir = ASSET_DIR / "outfits" / self.form_name
+                if outfit_dir.exists():
+                    char_dir = outfit_dir
+                else:
+                    char_dir = char_dir / self.form_name
+            else:
+                char_dir = char_dir / self.form_name
         animations: Dict[str, List[pygame.Surface]] = {}
 
         # Try new structure: state/frame.png (e.g., idle/0.png)
@@ -4899,6 +5003,10 @@ def run_pause_menu(scene: "GameplayScene") -> str:
     def open_settings() -> None:
         run_settings_menu(scene.game, title="SETTINGS")
 
+    def open_shops() -> str:
+        result_holder["value"] = "shops"
+        return "exit"
+
     def to_menu() -> str:
         result_holder["value"] = "menu"
         return "exit"
@@ -4911,11 +5019,14 @@ def run_pause_menu(scene: "GameplayScene") -> str:
         [
             MenuEntry(lambda: "Resume", resume),
             MenuEntry(lambda: "Settings", lambda: open_settings()),
+            MenuEntry(lambda: "Shops", open_shops),
             MenuEntry(lambda: "Main Menu", to_menu),
             MenuEntry(lambda: "Quit Game", quit_game),
         ],
         sound=scene.game.sound,
     )
+    menu.panel_color = (20, 30, 55, 230)
+    menu.panel_border_color = (200, 220, 255)
 
     scene.game.pause_speedrun(True)
     # Do not clear flight cheat; gameplay will reapply if enabled
@@ -4955,7 +5066,12 @@ def run_pause_menu(scene: "GameplayScene") -> str:
         )
 
         # Glitchy menu text if glitch_fx is enabled
-        entry_rects = menu.draw(scene.game.screen, scene.game.assets, SCREEN_HEIGHT // 2 + 40, scene.game.settings["glitch_fx"], return_rects=True)
+        menu.draw(
+            scene.game.screen,
+            scene.game.assets,
+            SCREEN_HEIGHT // 2 + 40,
+            scene.game.settings["glitch_fx"],
+        )
         if scene.game.settings["glitch_fx"]:
             # Add subtle scanlines and RGB split over the UI area to match glitch theme
             _draw_glitch_overlay(scene.game.screen)
@@ -7625,30 +7741,68 @@ class CosmeticsShopScene(Scene):
     def __init__(self, game: "Game"):
         super().__init__(game)
         self.outfit_costs = {
-            "Default": 0,
+            "None": 0,
             "Neon Runner": 15,
             "Crimson Armor": 20,
             "Midnight": 20,
             "Gold": 25,
+            "Verdant": 8,
+            "Stone": 10,
+            "Dune": 12,
+            "Thorn": 14,
+            "Frost": 16,
+            "Ember": 18,
+            "Sky": 20,
+            "Circuit": 22,
+            "Spectral": 24,
+            "Void": 26,
         }
         self.hat_costs = {
-            "Default": 0,
+            "None": 0,
             "Wizard": 12,
             "Pilot": 10,
             "Halo": 18,
             "Viking": 16,
+            "Verdant": 8,
+            "Stone": 10,
+            "Dune": 12,
+            "Thorn": 14,
+            "Frost": 16,
+            "Ember": 18,
+            "Sky": 20,
+            "Circuit": 22,
+            "Spectral": 24,
+            "Void": 26,
         }
         self.trail_costs = {
-            "Default": 0,
+            "None": 0,
             "Glitter": 12,
             "Cyber": 15,
             "Ghost": 15,
             "Inferno": 18,
+            "Verdant": 8,
+            "Stone": 10,
+            "Dune": 12,
+            "Thorn": 14,
+            "Frost": 16,
+            "Ember": 18,
+            "Sky": 20,
+            "Circuit": 22,
+            "Spectral": 24,
+            "Void": 26,
         }
         self.tabs = [("outfit", "Outfits"), ("hat", "Hats"), ("trail", "Trails")]
         self.active_tab = "outfit"
         self._tab_rects: List[pygame.Rect] = []
-        self._rebuild_menu()
+        self.items: List[Tuple[str, int]] = []
+        self._item_rects: List[pygame.Rect] = []
+        self._item_cache: Dict[Tuple[str, str, Tuple[int, int]], pygame.Surface] = {}
+        self._grid_cols = 1
+        self.selected_index = 0
+        self.scroll_row = 0
+        self._grid_rows = 1
+        self._visible_rows = 1
+        self._refresh_items()
 
     def _owned(self, kind: str) -> List[str]:
         key_map = {
@@ -7670,33 +7824,91 @@ class CosmeticsShopScene(Scene):
         if tab_key == self.active_tab:
             return
         self.active_tab = tab_key
-        self._rebuild_menu()
-        if self.menu:
-            self.menu.selected = 0
+        self.selected_index = 0
+        self._refresh_items()
 
-    def _label(self, kind: str, name: str, cost: int) -> str:
+    def _status(self, kind: str, name: str, cost: int) -> str:
         owned = name in self._owned(kind)
-        selected = self.game.cosmetics.get(kind, "Default") == name
+        selected = self.game.cosmetics.get(kind, "None") == name
         if selected:
-            status = "Selected"
+            return "Selected"
         elif owned or cost == 0:
-            status = "Owned"
-        else:
-            status = f"Cost {cost}"
-        return f"{name} [{status}]"
+            return "Owned"
+        return f"{cost} coins"
 
-    def _rebuild_menu(self) -> None:
-        entries: List[MenuEntry] = []
+    def _refresh_items(self) -> None:
         costs = self._tab_costs().get(self.active_tab, {})
-        for name, cost in costs.items():
-            entries.append(
-                MenuEntry(
-                    lambda n=name, c=cost: self._label(self.active_tab, n, c),
-                    lambda n=name, c=cost: self._buy_or_select(self.active_tab, n, c),
-                )
-            )
-        entries.append(MenuEntry(lambda: "Back", lambda: "exit"))
-        self.menu = VerticalMenu(entries, sound=self.game.sound)
+        self.items = [(name, cost) for name, cost in costs.items()]
+        if self.selected_index >= len(self.items):
+            self.selected_index = max(0, len(self.items) - 1)
+        self.scroll_row = 0
+
+    def _clamp_scroll(self) -> None:
+        max_scroll = max(0, self._grid_rows - self._visible_rows)
+        self.scroll_row = max(0, min(self.scroll_row, max_scroll))
+
+    def _ensure_selected_visible(self) -> None:
+        row = self.selected_index // max(1, self._grid_cols)
+        visible_rows = max(1, self._visible_rows)
+        if row < self.scroll_row:
+            self.scroll_row = row
+        elif row >= self.scroll_row + visible_rows:
+            self.scroll_row = row - visible_rows + 1
+        self._clamp_scroll()
+
+    def _item_surface(self, kind: str, name: str, size: Tuple[int, int]) -> Optional[pygame.Surface]:
+        key = (kind, name, size)
+        cached = self._item_cache.get(key)
+        if cached is not None:
+            return cached
+        surface: Optional[pygame.Surface] = None
+        if kind == "outfit":
+            if name == "None":
+                surface = pygame.Surface(size, pygame.SRCALPHA)
+                line_width = max(6, min(size) // 10)
+                pad = max(10, min(size) // 6)
+                pygame.draw.line(surface, (220, 60, 60, 255), (pad, pad), (size[0] - pad, size[1] - pad), line_width)
+                pygame.draw.line(surface, (220, 60, 60, 255), (size[0] - pad, pad), (pad, size[1] - pad), line_width)
+            else:
+                base_dir = ASSET_DIR / "outfits" / name
+                if base_dir.exists():
+                    png_path = base_dir / "idle_0.png"
+                    if not png_path.exists():
+                        options = sorted(base_dir.glob("*.png"))
+                        png_path = options[0] if options else png_path
+                    if png_path.exists():
+                        try:
+                            surface = pygame.image.load(str(png_path)).convert_alpha()
+                        except Exception as exc:
+                            print(f"[Assets] Failed to load outfit preview {png_path}: {exc}")
+        elif kind == "hat":
+            if name == "None":
+                surface = pygame.Surface(size, pygame.SRCALPHA)
+                line_width = max(6, min(size) // 10)
+                pad = max(10, min(size) // 6)
+                pygame.draw.line(surface, (220, 60, 60, 255), (pad, pad), (size[0] - pad, size[1] - pad), line_width)
+                pygame.draw.line(surface, (220, 60, 60, 255), (size[0] - pad, pad), (pad, size[1] - pad), line_width)
+            else:
+                png_path = HAT_DIR / f"{name}.png"
+                if png_path.exists():
+                    try:
+                        surface = pygame.image.load(str(png_path)).convert_alpha()
+                    except Exception as exc:
+                        print(f"[Assets] Failed to load hat preview {png_path}: {exc}")
+        elif kind == "trail":
+            if name == "None":
+                surface = pygame.Surface(size, pygame.SRCALPHA)
+                line_width = max(6, min(size) // 10)
+                pad = max(10, min(size) // 6)
+                pygame.draw.line(surface, (220, 60, 60, 255), (pad, pad), (size[0] - pad, size[1] - pad), line_width)
+                pygame.draw.line(surface, (220, 60, 60, 255), (size[0] - pad, pad), (pad, size[1] - pad), line_width)
+            else:
+                surface = self.game.assets.trail_texture(name, size)
+
+        if surface is not None and surface.get_size() != size:
+            surface = pygame.transform.smoothscale(surface, size)
+        self._item_cache[key] = surface
+        return surface
 
     def _buy_or_select(self, kind: str, name: str, cost: int) -> None:
         coins = getattr(self.game.progress, "coins", 0)
@@ -7732,28 +7944,59 @@ class CosmeticsShopScene(Scene):
             skills=self.game.skills,
             cosmetics=self.game.cosmetics,
         )
-        self._rebuild_menu()
+        self._refresh_items()
 
     def handle_event(self, event: pygame.event.Event) -> None:
         if event.type == pygame.QUIT:
             self.game.quit()
         elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
             self.game.change_scene(TitleScene)
-        elif event.type == pygame.KEYDOWN and event.key in (pygame.K_a, pygame.K_LEFT, pygame.K_d, pygame.K_RIGHT):
-            direction = -1 if event.key in (pygame.K_a, pygame.K_LEFT) else 1
-            keys = [key for key, _ in self.tabs]
-            current_index = keys.index(self.active_tab)
-            next_index = (current_index + direction) % len(keys)
-            self._switch_tab(keys[next_index])
         else:
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 and self._tab_rects:
                 for idx, rect in enumerate(self._tab_rects):
                     if rect.collidepoint(event.pos):
                         self._switch_tab(self.tabs[idx][0])
                         return
-            result = self.menu.handle_event(event)
-            if result == "exit":
-                self.game.change_scene(TitleScene)
+            if event.type == pygame.KEYDOWN:
+                if event.key in (pygame.K_1, pygame.K_2, pygame.K_3):
+                    idx = event.key - pygame.K_1
+                    if 0 <= idx < len(self.tabs):
+                        self._switch_tab(self.tabs[idx][0])
+                        return
+                if not self.items:
+                    return
+                if event.key in (pygame.K_a, pygame.K_LEFT):
+                    self.selected_index = max(0, self.selected_index - 1)
+                elif event.key in (pygame.K_d, pygame.K_RIGHT):
+                    self.selected_index = min(len(self.items) - 1, self.selected_index + 1)
+                elif event.key in (pygame.K_w, pygame.K_UP):
+                    self.selected_index = max(0, self.selected_index - self._grid_cols)
+                elif event.key in (pygame.K_s, pygame.K_DOWN):
+                    self.selected_index = min(len(self.items) - 1, self.selected_index + self._grid_cols)
+                elif event.key in (pygame.K_RETURN, pygame.K_SPACE):
+                    name, cost = self.items[self.selected_index]
+                    self._buy_or_select(self.active_tab, name, cost)
+                self._ensure_selected_visible()
+            elif event.type == pygame.MOUSEMOTION and self._item_rects:
+                for idx, rect in enumerate(self._item_rects):
+                    if rect.collidepoint(event.pos):
+                        if idx != self.selected_index:
+                            self.selected_index = idx
+                            self.game.sound.play_event("menu_move")
+                            self._ensure_selected_visible()
+                        break
+            elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 and self._item_rects:
+                for idx, rect in enumerate(self._item_rects):
+                    if rect.collidepoint(event.pos):
+                        self.selected_index = idx
+                        name, cost = self.items[idx]
+                        self._buy_or_select(self.active_tab, name, cost)
+                        self._ensure_selected_visible()
+                        break
+            elif event.type == pygame.MOUSEWHEEL:
+                if event.y != 0:
+                    self.scroll_row = max(0, self.scroll_row - event.y)
+                    self._clamp_scroll()
 
     def update(self, dt: float) -> None:
         pass
@@ -7787,13 +8030,58 @@ class CosmeticsShopScene(Scene):
             surface.blit(tab_render, tab_rect)
         current = self.game.assets.font(20, False)
         current_text = (
-            f"Outfit: {self.game.cosmetics.get('outfit', 'Default')}  |  "
-            f"Hat: {self.game.cosmetics.get('hat', 'Default')}  |  "
-            f"Trail: {self.game.cosmetics.get('trail', 'Default')}"
+            f"Outfit: {self.game.cosmetics.get('outfit', 'None')}  |  "
+            f"Hat: {self.game.cosmetics.get('hat', 'None')}  |  "
+            f"Trail: {self.game.cosmetics.get('trail', 'None')}"
         )
         draw_center_text(surface, current, current_text, 230, (200, 220, 255))
-        # Items list below the tab row
-        self.menu.draw(surface, self.game.assets, SCREEN_HEIGHT // 2 - 20, self.game.settings["glitch_fx"])
+        # Items grid below the tab row
+        self._item_rects = []
+        grid_top = 270
+        grid_width = SCREEN_WIDTH - 240
+        grid_height = SCREEN_HEIGHT - 140 - grid_top
+        gap = 22
+        min_item_width = 140
+        min_item_height = 140
+        item_count = max(1, len(self.items))
+        max_cols = max(1, min(item_count, grid_width // (min_item_width + gap)))
+        cols = max_cols
+        rows = (item_count + cols - 1) // cols
+        item_width = max(min_item_width, (grid_width - gap * (cols - 1)) // cols)
+        item_height = max(min_item_height, (grid_height - gap * (rows - 1)) // rows)
+        self._grid_cols = cols
+        self._grid_rows = rows
+        self._visible_rows = rows
+        self.scroll_row = 0
+        total_row_width = cols * item_width + (cols - 1) * gap
+        start_x = (SCREEN_WIDTH - total_row_width) // 2
+        name_font = self.game.assets.font(18, True)
+        status_font = self.game.assets.font(16, False)
+        image_dim = max(64, min(item_width, item_height) - 70)
+        image_size = (image_dim, image_dim)
+        for idx, (name, cost) in enumerate(self.items):
+            col = idx % cols
+            row = idx // cols
+            x = start_x + col * (item_width + gap)
+            y = grid_top + row * (item_height + gap)
+            rect = pygame.Rect(x, y, item_width, item_height)
+            self._item_rects.append(rect)
+            selected = idx == self.selected_index
+            box_color = (28, 32, 54) if not selected else (60, 80, 140)
+            border = (80, 90, 130) if not selected else (220, 230, 255)
+            pygame.draw.rect(surface, box_color, rect, border_radius=14)
+            pygame.draw.rect(surface, border, rect, 2, border_radius=14)
+            name_render = name_font.render(name, True, WHITE)
+            name_rect = name_render.get_rect(center=(rect.centerx, rect.top + 24))
+            surface.blit(name_render, name_rect)
+            preview = self._item_surface(self.active_tab, name, image_size)
+            if preview is not None:
+                preview_rect = preview.get_rect(center=(rect.centerx, rect.centery - 6))
+                surface.blit(preview, preview_rect)
+            status = self._status(self.active_tab, name, cost)
+            status_render = status_font.render(status, True, (200, 220, 255))
+            status_rect = status_render.get_rect(center=(rect.centerx, rect.bottom - 26))
+            surface.blit(status_render, status_rect)
 
 
 class SkillsShopScene(Scene):
@@ -8252,7 +8540,8 @@ class GameplayScene(Scene):
             form_name=outfit_form,
         )
         scene._apply_player_skills()
-        scene.trail_color = game.active_trail_color()
+        scene.trail_style = game.active_trail_style()
+        scene.trail_color = scene.trail_style["color"] if scene.trail_style else None
         scene._player_trail = []
         scene._snap_camera_to_player()
         return scene
@@ -8299,7 +8588,8 @@ class GameplayScene(Scene):
             form_name=form_name,
         )
         self._apply_player_skills()
-        self.trail_color = self.game.active_trail_color()
+        self.trail_style = self.game.active_trail_style()
+        self.trail_color = self.trail_style["color"] if self.trail_style else None
         self._player_trail: List[Dict[str, Any]] = []
         # Enable flight cheat if unlocked
         if hasattr(self.game, "flight_cheat_enabled") and self.game.flight_cheat_enabled:
@@ -8396,6 +8686,8 @@ class GameplayScene(Scene):
                 action = run_pause_menu(self)
                 if action == "menu":
                     self.game.change_scene(TitleScene)
+                elif action == "shops":
+                    self.game.change_scene(ShopsHubScene)
                 elif action == "quit":
                     self.game.quit()
 
@@ -8551,11 +8843,35 @@ class GameplayScene(Scene):
             surface.blit(sprite.image, sprite.rect.move(-self.camera_x, -self.camera_y))
 
     def _update_player_trail(self, dt: float) -> None:
-        if not getattr(self, "trail_color", None):
+        if not getattr(self, "trail_style", None):
             return
         speed = abs(self.player.velocity.x) + abs(self.player.velocity.y)
         if speed > 0.5:
-            self._player_trail.append({"pos": pygame.Vector2(self.player.rect.center), "life": 0.35})
+            style = self.trail_style
+            life = float(style.get("life", 0.45))
+            size = int(style.get("size", 12))
+            jitter = int(style.get("jitter", 4))
+            count = int(style.get("count", 1))
+            direction = pygame.Vector2(self.player.velocity)
+            if direction.length() > 0.1:
+                direction = direction.normalize()
+            else:
+                direction = pygame.Vector2(0, 1)
+            for _ in range(max(1, count)):
+                pos = pygame.Vector2(self.player.rect.center)
+                if jitter:
+                    pos.x += random.randint(-jitter, jitter)
+                    pos.y += random.randint(-jitter, jitter)
+                self._player_trail.append(
+                    {
+                        "pos": pos,
+                        "life": life,
+                        "max_life": life,
+                        "size": size,
+                        "angle": random.uniform(0, math.tau),
+                        "dir": direction,
+                    }
+                )
         alive: List[Dict[str, Any]] = []
         for t in self._player_trail:
             t["life"] -= dt
@@ -8564,13 +8880,34 @@ class GameplayScene(Scene):
         self._player_trail = alive
 
     def _draw_player_trail(self, surface: pygame.Surface) -> None:
-        if not getattr(self, "trail_color", None) or not getattr(self, "_player_trail", None):
+        if not getattr(self, "trail_style", None) or not getattr(self, "_player_trail", None):
             return
-        base = self.trail_color
+        style = self.trail_style
+        base = style.get("color", self.trail_color)
+        trail_name = style.get("name")
         for t in self._player_trail:
-            alpha = int(160 * max(0.0, t["life"] / 0.35))
-            r = max(2, int(6 * (t["life"] / 0.35)))
-            pygame.draw.circle(surface, (*base, alpha), (int(t["pos"].x - self.camera_x), int(t["pos"].y - self.camera_y)), r)
+            life_ratio = max(0.0, t["life"] / max(0.01, t["max_life"]))
+            alpha = int(200 * life_ratio)
+            size = max(4, int(t["size"] * max(0.6, life_ratio)))
+            if trail_name:
+                tex_scale = float(style.get("tex_scale", 0.6))
+                tex_size = max(10, int(size * tex_scale))
+                tex = self.game.assets.trail_texture(trail_name, (tex_size, tex_size))
+            else:
+                tex = None
+            x = int(t["pos"].x - self.camera_x)
+            y = int(t["pos"].y - self.camera_y)
+            if tex is not None:
+                direction = t.get("dir") or pygame.Vector2(0, 1)
+                for step in range(3):
+                    step_alpha = max(0, int(alpha * (1.0 - step * 0.25)))
+                    draw = tex.copy()
+                    draw.set_alpha(step_alpha)
+                    offset = direction * (-step * max(4, tex.get_width() * 0.6))
+                    rect = draw.get_rect(center=(x + int(offset.x), y + int(offset.y)))
+                    surface.blit(draw, rect)
+            else:
+                pygame.draw.circle(surface, (*base, alpha), (x, y), max(2, size // 3))
 
     def _draw_hat(self, surface: pygame.Surface, target_rect: pygame.Rect, offset: Tuple[int, int] = (0, 0)) -> None:
         hat_name = self.game.cosmetics.get("hat", "Default")
@@ -9076,7 +9413,8 @@ class BossArenaScene(Scene):
         self.shoot_hold = 0.0
         self.shoot_charging = False
         self._shoot_prev = False
-        self.trail_color = self.game.active_trail_color()
+        self.trail_style = self.game.active_trail_style()
+        self.trail_color = self.trail_style["color"] if self.trail_style else None
         self._player_trail: List[Dict[str, Any]] = []
         self.state = "intro"
         self.explosion_timer = 0.0
@@ -9122,6 +9460,8 @@ class BossArenaScene(Scene):
                 action = run_pause_menu(self)
                 if action == "menu":
                     self.game.change_scene(TitleScene)
+                elif action == "shops":
+                    self.game.change_scene(ShopsHubScene)
                 elif action == "quit":
                     self.game.quit()
             elif event.key == self.game.settings["key_map"].get("shield", pygame.K_LSHIFT) and self.state in ("fight", "exit"):
@@ -9690,12 +10030,36 @@ class BossArenaScene(Scene):
             pygame.draw.circle(surface, particle["color"], pos, particle["size"])
 
     def _update_player_trail(self, dt: float) -> None:
-        if not self.trail_color:
+        if not self.trail_style:
             return
         # Append a trail point each frame while the player is moving
         speed = abs(self.player.velocity.x) + abs(self.player.velocity.y)
         if speed > 0.5:
-            self._player_trail.append({"pos": pygame.Vector2(self.player.rect.center), "life": 0.35})
+            style = self.trail_style
+            life = float(style.get("life", 0.45))
+            size = int(style.get("size", 12))
+            jitter = int(style.get("jitter", 4))
+            count = int(style.get("count", 1))
+            direction = pygame.Vector2(self.player.velocity)
+            if direction.length() > 0.1:
+                direction = direction.normalize()
+            else:
+                direction = pygame.Vector2(0, 1)
+            for _ in range(max(1, count)):
+                pos = pygame.Vector2(self.player.rect.center)
+                if jitter:
+                    pos.x += random.randint(-jitter, jitter)
+                    pos.y += random.randint(-jitter, jitter)
+                self._player_trail.append(
+                    {
+                        "pos": pos,
+                        "life": life,
+                        "max_life": life,
+                        "size": size,
+                        "angle": random.uniform(0, math.tau),
+                        "dir": direction,
+                    }
+                )
         alive: List[Dict[str, Any]] = []
         for t in self._player_trail:
             t["life"] -= dt
@@ -9704,13 +10068,34 @@ class BossArenaScene(Scene):
         self._player_trail = alive
 
     def _draw_player_trail(self, surface: pygame.Surface) -> None:
-        if not self.trail_color or not self._player_trail:
+        if not self.trail_style or not self._player_trail:
             return
-        base = self.trail_color
+        style = self.trail_style
+        base = style.get("color", self.trail_color)
+        trail_name = style.get("name")
         for t in self._player_trail:
-            alpha = int(180 * max(0.0, t["life"] / 0.35))
-            r = max(2, int(6 * (t["life"] / 0.35)))
-            pygame.draw.circle(surface, (*base, alpha), (int(t["pos"].x), int(t["pos"].y)), r)
+            life_ratio = max(0.0, t["life"] / max(0.01, t["max_life"]))
+            alpha = int(220 * life_ratio)
+            size = max(4, int(t["size"] * max(0.6, life_ratio)))
+            if trail_name:
+                tex_scale = float(style.get("tex_scale", 0.6))
+                tex_size = max(10, int(size * tex_scale))
+                tex = self.game.assets.trail_texture(trail_name, (tex_size, tex_size))
+            else:
+                tex = None
+            x = int(t["pos"].x)
+            y = int(t["pos"].y)
+            if tex is not None:
+                direction = t.get("dir") or pygame.Vector2(0, 1)
+                for step in range(3):
+                    step_alpha = max(0, int(alpha * (1.0 - step * 0.25)))
+                    draw = tex.copy()
+                    draw.set_alpha(step_alpha)
+                    offset = direction * (-step * max(4, tex.get_width() * 0.6))
+                    rect = draw.get_rect(center=(x + int(offset.x), y + int(offset.y)))
+                    surface.blit(draw, rect)
+            else:
+                pygame.draw.circle(surface, (*base, alpha), (x, y), max(2, size // 3))
 
     def _draw_hat(self, surface: pygame.Surface, target_rect: pygame.Rect, offset: Tuple[int, int] = (0, 0)) -> None:
         hat_name = self.game.cosmetics.get("hat", "Default")
@@ -10695,23 +11080,42 @@ class Game:
 
     def active_outfit_color(self) -> Tuple[int, int, int]:
         """Resolve the current outfit tint color."""
-        outfit = self.cosmetics.get("outfit", "Default") if hasattr(self, "cosmetics") else "Default"
+        outfit = self.cosmetics.get("outfit", "None") if hasattr(self, "cosmetics") else "None"
         return OUTFIT_COLORS.get(outfit, self.player_color)
 
     def active_outfit_form(self) -> Optional[str]:
         """Return outfit asset folder name if one exists for the selected outfit."""
-        outfit = self.cosmetics.get("outfit", "Default") if hasattr(self, "cosmetics") else "Default"
-        if outfit == "Default":
+        outfit = self.cosmetics.get("outfit", "None") if hasattr(self, "cosmetics") else "None"
+        if outfit == "None":
             return None
         outfit_dir = ASSET_DIR / "outfits" / outfit
         return outfit if outfit_dir.exists() else None
 
     def active_trail_color(self) -> Optional[Tuple[int, int, int]]:
-        trail = self.cosmetics.get("trail", "Default") if hasattr(self, "cosmetics") else "Default"
+        trail = self.cosmetics.get("trail", "None") if hasattr(self, "cosmetics") else "None"
+        if trail == "None":
+            return None
         return TRAIL_COLORS.get(trail, None)
 
+    def active_trail_style(self) -> Optional[Dict[str, Any]]:
+        trail = self.cosmetics.get("trail", "None") if hasattr(self, "cosmetics") else "None"
+        if trail == "None":
+            return None
+        style = TRAIL_STYLES.get(trail, {})
+        return {
+            "name": trail,
+            "color": TRAIL_COLORS.get(trail, (200, 240, 255)),
+            "life": style.get("life", 0.45),
+            "size": style.get("size", 12),
+            "jitter": style.get("jitter", 4),
+            "count": style.get("count", 1),
+            "tex_scale": style.get("tex_scale", 0.6),
+        }
+
     def active_hat_color(self) -> Optional[Tuple[int, int, int]]:
-        hat = self.cosmetics.get("hat", "Default") if hasattr(self, "cosmetics") else "Default"
+        hat = self.cosmetics.get("hat", "None") if hasattr(self, "cosmetics") else "None"
+        if hat == "None":
+            return None
         return HAT_COLORS.get(hat, None)
 
     def change_scene(self, scene_cls: Callable[..., Scene], *args, **kwargs) -> None:
