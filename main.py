@@ -7621,7 +7621,7 @@ class LevelSelectScene(Scene):
 
 
 class CosmeticsShopScene(Scene):
-    """Cosmetics shop for outfits and trails."""
+    """Cosmetics shop for outfits, hats, and trails."""
     def __init__(self, game: "Game"):
         super().__init__(game)
         self.outfit_costs = {
@@ -7631,6 +7631,13 @@ class CosmeticsShopScene(Scene):
             "Midnight": 20,
             "Gold": 25,
         }
+        self.hat_costs = {
+            "Default": 0,
+            "Wizard": 12,
+            "Pilot": 10,
+            "Halo": 18,
+            "Viking": 16,
+        }
         self.trail_costs = {
             "Default": 0,
             "Glitter": 12,
@@ -7638,15 +7645,34 @@ class CosmeticsShopScene(Scene):
             "Ghost": 15,
             "Inferno": 18,
         }
+        self.tabs = [("outfit", "Outfits"), ("hat", "Hats"), ("trail", "Trails")]
+        self.active_tab = "outfit"
+        self._tab_rects: List[pygame.Rect] = []
         self._rebuild_menu()
 
     def _owned(self, kind: str) -> List[str]:
         key_map = {
             "outfit": "owned_outfits",
             "trail": "owned_trails",
+            "hat": "owned_hats",
         }
         key = key_map.get(kind, "")
         return list(self.game.cosmetics.get(key, []))
+
+    def _tab_costs(self) -> Dict[str, Dict[str, int]]:
+        return {
+            "outfit": self.outfit_costs,
+            "hat": self.hat_costs,
+            "trail": self.trail_costs,
+        }
+
+    def _switch_tab(self, tab_key: str) -> None:
+        if tab_key == self.active_tab:
+            return
+        self.active_tab = tab_key
+        self._rebuild_menu()
+        if self.menu:
+            self.menu.selected = 0
 
     def _label(self, kind: str, name: str, cost: int) -> str:
         owned = name in self._owned(kind)
@@ -7661,23 +7687,12 @@ class CosmeticsShopScene(Scene):
 
     def _rebuild_menu(self) -> None:
         entries: List[MenuEntry] = []
-        entries.append(MenuEntry(lambda: "-- Outfits --", lambda: None, enabled=False))
-        entries.append(MenuEntry(lambda: " ", lambda: None, enabled=False))
-        for name, cost in self.outfit_costs.items():
+        costs = self._tab_costs().get(self.active_tab, {})
+        for name, cost in costs.items():
             entries.append(
                 MenuEntry(
-                    lambda n=name, c=cost: self._label("outfit", n, c),
-                    lambda n=name, c=cost: self._buy_or_select("outfit", n, c),
-                )
-            )
-        entries.append(MenuEntry(lambda: " ", lambda: None, enabled=False))
-        entries.append(MenuEntry(lambda: "-- Trails --", lambda: None, enabled=False))
-        entries.append(MenuEntry(lambda: " ", lambda: None, enabled=False))
-        for name, cost in self.trail_costs.items():
-            entries.append(
-                MenuEntry(
-                    lambda n=name, c=cost: self._label("trail", n, c),
-                    lambda n=name, c=cost: self._buy_or_select("trail", n, c),
+                    lambda n=name, c=cost: self._label(self.active_tab, n, c),
+                    lambda n=name, c=cost: self._buy_or_select(self.active_tab, n, c),
                 )
             )
         entries.append(MenuEntry(lambda: "Back", lambda: "exit"))
@@ -7724,7 +7739,18 @@ class CosmeticsShopScene(Scene):
             self.game.quit()
         elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
             self.game.change_scene(TitleScene)
+        elif event.type == pygame.KEYDOWN and event.key in (pygame.K_a, pygame.K_LEFT, pygame.K_d, pygame.K_RIGHT):
+            direction = -1 if event.key in (pygame.K_a, pygame.K_LEFT) else 1
+            keys = [key for key, _ in self.tabs]
+            current_index = keys.index(self.active_tab)
+            next_index = (current_index + direction) % len(keys)
+            self._switch_tab(keys[next_index])
         else:
+            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 and self._tab_rects:
+                for idx, rect in enumerate(self._tab_rects):
+                    if rect.collidepoint(event.pos):
+                        self._switch_tab(self.tabs[idx][0])
+                        return
             result = self.menu.handle_event(event)
             if result == "exit":
                 self.game.change_scene(TitleScene)
@@ -7739,99 +7765,35 @@ class CosmeticsShopScene(Scene):
         info_font = self.game.assets.font(24, False)
         coins = getattr(self.game.progress, "coins", 0)
         draw_center_text(surface, info_font, f"Coins: {coins}", 130, (255, 223, 70))
-        current = self.game.assets.font(22, False)
-        draw_center_text(surface, current, f"Outfit: {self.game.cosmetics.get('outfit', 'Default')}", 165, (200, 220, 255))
-        draw_center_text(surface, current, f"Trail: {self.game.cosmetics.get('trail', 'Default')}", 195, (200, 220, 255))
-        draw_center_text(surface, self.game.assets.font(18, False), "Outfit textures installed.", 225, (180, 200, 220))
-        # Draw menu higher with extra spacing by faking a taller y anchor
-        self.menu.draw(surface, self.game.assets, SCREEN_HEIGHT // 2 - 80, self.game.settings["glitch_fx"])
-
-
-class HatShopScene(Scene):
-    """Dedicated hats shop."""
-    def __init__(self, game: "Game"):
-        super().__init__(game)
-        self.hat_costs = {
-            "Default": 0,
-            "Wizard": 12,
-            "Pilot": 10,
-            "Halo": 18,
-            "Viking": 16,
-        }
-        self._rebuild_menu()
-
-    def _owned(self) -> List[str]:
-        return list(self.game.cosmetics.get("owned_hats", []))
-
-    def _label(self, name: str, cost: int) -> str:
-        owned = name in self._owned()
-        selected = self.game.cosmetics.get("hat", "Default") == name
-        if selected:
-            status = "Selected"
-        elif owned or cost == 0:
-            status = "Owned"
-        else:
-            status = f"Cost {cost}"
-        return f"{name} [{status}]"
-
-    def _rebuild_menu(self) -> None:
-        entries: List[MenuEntry] = []
-        entries.append(MenuEntry(lambda: "-- Hats --", lambda: None, enabled=False))
-        entries.append(MenuEntry(lambda: " ", lambda: None, enabled=False))
-        for name, cost in self.hat_costs.items():
-            entries.append(MenuEntry(lambda n=name, c=cost: self._label(n, c), lambda n=name, c=cost: self._buy_or_select(n, c)))
-        entries.append(MenuEntry(lambda: " ", lambda: None, enabled=False))
-        entries.append(MenuEntry(lambda: "Back", lambda: "exit"))
-        self.menu = VerticalMenu(entries, sound=self.game.sound)
-
-    def _buy_or_select(self, name: str, cost: int) -> None:
-        coins = getattr(self.game.progress, "coins", 0)
-        owned = self._owned()
-        if name in owned or cost == 0:
-            self.game.cosmetics["hat"] = name
-        else:
-            if coins < cost:
-                self.game.sound.play_event("menu_move")
-                return
-            coins -= cost
-            owned.append(name)
-            self.game.cosmetics["owned_hats"] = owned
-            self.game.cosmetics["hat"] = name
-            self.game.progress.coins = coins
-        self.game.progress.save(
-            self.game.progress.world,
-            self.game.progress.level,
-            getattr(self.game, "player_color", None),
-            coins=getattr(self.game.progress, "coins", coins),
-            skills=self.game.skills,
-            cosmetics=self.game.cosmetics,
+        tab_font = self.game.assets.font(22, True)
+        self._tab_rects = []
+        tab_width = 180
+        tab_height = 40
+        tab_gap = 16
+        total_width = tab_width * len(self.tabs) + tab_gap * (len(self.tabs) - 1)
+        start_x = (SCREEN_WIDTH - total_width) // 2
+        tab_y = 170
+        for idx, (key, label) in enumerate(self.tabs):
+            x = start_x + idx * (tab_width + tab_gap)
+            rect = pygame.Rect(x, tab_y, tab_width, tab_height)
+            self._tab_rects.append(rect)
+            is_active = key == self.active_tab
+            base_color = (40, 50, 80) if not is_active else (90, 120, 200)
+            border_color = (120, 140, 200) if not is_active else (220, 240, 255)
+            pygame.draw.rect(surface, base_color, rect, border_radius=10)
+            pygame.draw.rect(surface, border_color, rect, 2, border_radius=10)
+            tab_render = tab_font.render(label, True, WHITE)
+            tab_rect = tab_render.get_rect(center=rect.center)
+            surface.blit(tab_render, tab_rect)
+        current = self.game.assets.font(20, False)
+        current_text = (
+            f"Outfit: {self.game.cosmetics.get('outfit', 'Default')}  |  "
+            f"Hat: {self.game.cosmetics.get('hat', 'Default')}  |  "
+            f"Trail: {self.game.cosmetics.get('trail', 'Default')}"
         )
-        self._rebuild_menu()
-
-    def handle_event(self, event: pygame.event.Event) -> None:
-        if event.type == pygame.QUIT:
-            self.game.quit()
-        elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-            self.game.change_scene(TitleScene)
-        else:
-            result = self.menu.handle_event(event)
-            if result == "exit":
-                self.game.change_scene(TitleScene)
-
-    def update(self, dt: float) -> None:
-        pass
-
-    def draw(self, surface: pygame.Surface) -> None:
-        surface.fill((14, 10, 24))
-        title_font = self.game.assets.font(48, True)
-        draw_glitch_text(surface, title_font, "HAT SHOP", 70, WHITE, self.game.settings["glitch_fx"])
-        info_font = self.game.assets.font(22, False)
-        coins = getattr(self.game.progress, "coins", 0)
-        draw_center_text(surface, info_font, f"Coins: {coins}", 130, (255, 223, 70))
-        current = self.game.assets.font(22, False)
-        draw_center_text(surface, current, f"Hat: {self.game.cosmetics.get('hat', 'Default')}", 165, (200, 220, 255))
-        draw_center_text(surface, self.game.assets.font(18, False), "New hat textures coming soon.", 195, (180, 200, 220))
-        self.menu.draw(surface, self.game.assets, SCREEN_HEIGHT // 2 - 60, self.game.settings["glitch_fx"])
+        draw_center_text(surface, current, current_text, 230, (200, 220, 255))
+        # Items list below the tab row
+        self.menu.draw(surface, self.game.assets, SCREEN_HEIGHT // 2 - 20, self.game.settings["glitch_fx"])
 
 
 class SkillsShopScene(Scene):
@@ -7941,7 +7903,6 @@ class ShopsHubScene(Scene):
         self.menu = VerticalMenu(
             [
                 MenuEntry(lambda: "Cosmetics Shop", self._open_cosmetics),
-                MenuEntry(lambda: "Hat Shop", self._open_hats),
                 MenuEntry(lambda: "Skills Shop", self._open_skills),
                 MenuEntry(lambda: "Back", lambda: "exit"),
             ],
@@ -7955,9 +7916,6 @@ class ShopsHubScene(Scene):
     def _open_skills(self):
         self.game.sound.play_event("menu_confirm")
         self.game.change_scene(SkillsShopScene)
-    def _open_hats(self):
-        self.game.sound.play_event("menu_confirm")
-        self.game.change_scene(HatShopScene)
 
     def handle_event(self, event: pygame.event.Event) -> None:
         if event.type == pygame.QUIT:
