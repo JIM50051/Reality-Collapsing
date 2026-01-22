@@ -80,6 +80,8 @@ class InputState:
         self.back = False
         self.pause = False
         self.shoot = False
+        self.shield = False
+        self.dash = False
         self.move_left = False
         self.move_right = False
         self.up = False
@@ -187,12 +189,13 @@ class VerticalMenu:
             enabled = getattr(entry, "enabled", True)
             color = (255, 255, 255) if enabled else (128, 128, 128)
             rect_y = menu_y + i * spacing
-            entry_rect = pygame.Rect(menu_x, rect_y - spacing // 2 + 4, menu_width, spacing - 8)
+            entry_rect = pygame.Rect(menu_x, rect_y - spacing // 2 + 8, menu_width, spacing - 16)
             entry_rects.append(entry_rect)
             if i == selected:
-                highlight = pygame.Surface((menu_width, spacing - 8), pygame.SRCALPHA)
-                for y2 in range(spacing - 8):
-                    ratio = y2 / float(spacing - 9)
+                highlight_height = max(10, spacing - 16)
+                highlight = pygame.Surface((menu_width, highlight_height), pygame.SRCALPHA)
+                for y2 in range(highlight_height):
+                    ratio = y2 / float(highlight_height - 1)
                     color_blend = (
                         int(highlight_color1[0] * (1 - ratio) + highlight_color2[0] * ratio),
                         int(highlight_color1[1] * (1 - ratio) + highlight_color2[1] * ratio),
@@ -200,11 +203,11 @@ class VerticalMenu:
                         180,
                     )
                     highlight.fill(color_blend, rect=pygame.Rect(0, y2, menu_width, 1))
-                highlight_shadow = pygame.Surface((menu_width + 8, spacing), pygame.SRCALPHA)
-                pygame.draw.ellipse(highlight_shadow, (0, 0, 0, 80), highlight_shadow.get_rect())
+                highlight_shadow = pygame.Surface((menu_width + 8, highlight_height + 6), pygame.SRCALPHA)
+                pygame.draw.ellipse(highlight_shadow, (0, 0, 0, 60), highlight_shadow.get_rect())
                 highlight_shadow_rect = highlight_shadow.get_rect(center=(surface.get_width() // 2, rect_y + 3))
                 surface.blit(highlight_shadow, highlight_shadow_rect)
-                surface.blit(highlight, (menu_x, rect_y - spacing // 2 + 8))
+                surface.blit(highlight, (menu_x, rect_y - highlight_height // 2 + 4))
             if glitch_fx and i == selected:
                 for _ in range(3):
                     offset_x = random.randint(-3, 3)
@@ -565,6 +568,8 @@ DEFAULT_KEY_MAP = {
     "down": pygame.K_s,
     "jump": pygame.K_SPACE,
     "shoot": pygame.K_f,
+    "shield": pygame.K_LSHIFT,
+    "dash": pygame.K_e,
     "pause": pygame.K_ESCAPE,
     "accept": pygame.K_RETURN,
     "back": pygame.K_ESCAPE,
@@ -577,6 +582,8 @@ DEFAULT_CONTROLLER_MAP = {
     "move_axis_y": 1,
     "jump": 0, # A button
     "shoot": 2, # X button
+    "shield": 3, # Y button
+    "dash": 5, # RB button
     "pause": 7, # Start button
     "accept": 0, # A button
     "back": 1, # B button
@@ -590,6 +597,47 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
     "key_map": DEFAULT_KEY_MAP,
     "controller_map": DEFAULT_CONTROLLER_MAP,
     "character": "player",  # default character
+    "skills": {
+        "rapid_charge": False,
+        "blast_radius": False,
+        "shield_pulse": False,
+        "reflective_shield": False,
+        "stagger": False,
+        "extra_health_levels": 0,
+    },
+}
+
+DEFAULT_COSMETICS: Dict[str, Any] = {
+    "outfit": "Default",
+    "trail": "Default",
+    "hat": "Default",
+    "owned_outfits": ["Default"],
+    "owned_trails": ["Default"],
+    "owned_hats": ["Default"],
+}
+
+OUTFIT_COLORS: Dict[str, Tuple[int, int, int]] = {
+    "Default": (160, 220, 255),
+    "Neon Runner": (120, 255, 220),
+    "Crimson Armor": (240, 90, 90),
+    "Midnight": (90, 110, 200),
+    "Gold": (240, 200, 90),
+}
+
+TRAIL_COLORS: Dict[str, Tuple[int, int, int]] = {
+    "Default": (200, 240, 255),
+    "Glitter": (255, 220, 120),
+    "Cyber": (120, 255, 200),
+    "Ghost": (200, 200, 255),
+    "Inferno": (255, 140, 80),
+}
+
+HAT_COLORS: Dict[str, Tuple[int, int, int]] = {
+    "Default": (200, 200, 200),
+    "Wizard": (120, 80, 200),
+    "Pilot": (200, 120, 60),
+    "Halo": (255, 230, 120),
+    "Viking": (180, 120, 80),
 }
 
 BG_COLORS = [
@@ -910,6 +958,8 @@ class ProgressManager:
         # persisted player color (r,g,b) or None
         self.player_color: Optional[Tuple[int, int, int]] = None
         self.coins = 0
+        self.skills: Dict[str, Any] = DEFAULT_SETTINGS["skills"].copy()
+        self.cosmetics: Dict[str, Any] = DEFAULT_COSMETICS.copy()
         self.load()
 
     def load(self) -> None:
@@ -928,6 +978,21 @@ class ProgressManager:
             else:
                 self.player_color = None
             self.coins = int(data.get("coins", 0))
+            skills = data.get("skills", {})
+            if isinstance(skills, dict):
+                base = DEFAULT_SETTINGS["skills"].copy()
+                base.update(skills)
+                self.skills = base
+            cosmetics = data.get("cosmetics", {})
+            if isinstance(cosmetics, dict):
+                base_c = DEFAULT_COSMETICS.copy()
+                base_c.update(cosmetics)
+                # Ensure owned lists always include Default
+                if "owned_outfits" in base_c and "Default" not in base_c["owned_outfits"]:
+                    base_c["owned_outfits"].insert(0, "Default")
+                if "owned_trails" in base_c and "Default" not in base_c["owned_trails"]:
+                    base_c["owned_trails"].insert(0, "Default")
+                self.cosmetics = base_c
             # Load speedrun timer data if present
             game = getattr(self, 'game', None)
             if game is not None:
@@ -945,17 +1010,23 @@ class ProgressManager:
             self.player_color = None
             self.coins = 0
 
-    def save(self, world: int, level: int, player_color: Optional[Tuple[int, int, int]] = None, coins: Optional[int] = None) -> None:
+    def save(self, world: int, level: int, player_color: Optional[Tuple[int, int, int]] = None, coins: Optional[int] = None, skills: Optional[Dict[str, Any]] = None, cosmetics: Optional[Dict[str, Any]] = None) -> None:
         """Persist world, level, coins, optional player_color, and selected character/form if available, plus speedrun timer data."""
         self.world, self.level = world, level
         if coins is not None:
             self.coins = int(coins)
+        if skills is not None:
+            self.skills = skills
+        if cosmetics is not None:
+            self.cosmetics = cosmetics
         if player_color is not None:
             try:
                 self.player_color = (int(player_color[0]), int(player_color[1]), int(player_color[2]))
             except Exception:
                 self.player_color = None
         payload: Dict[str, Any] = {"world": self.world, "level": self.level, "coins": self.coins}
+        payload["skills"] = self.skills
+        payload["cosmetics"] = self.cosmetics
         if self.player_color is not None:
             payload["player_color"] = list(self.player_color)
         game = getattr(self, 'game', None)
@@ -980,7 +1051,9 @@ class ProgressManager:
         # Clearing progress also clears saved player color and coins
         self.player_color = None
         self.coins = 0
-        self.save(1, 1, player_color=None, coins=0)
+        self.skills = DEFAULT_SETTINGS["skills"].copy()
+        self.cosmetics = DEFAULT_COSMETICS.copy()
+        self.save(1, 1, player_color=None, coins=0, cosmetics=self.cosmetics)
 
 
 class AssetCache:
@@ -1164,8 +1237,12 @@ class AssetCache:
         return {state: [frame.copy() for frame in frames] for state, frames in animations.items()}
 
     def _load_boss_frames(self, world: int) -> Optional[Dict[str, List[pygame.Surface]]]:
-        # Only load from directory, no spritesheet or procedural fallback
-        return self._load_boss_frames_from_dir(world)
+        frames = self._load_boss_frames_from_dir(world)
+        if not frames:
+            frames = self._load_boss_frames_from_sheet(world)
+        if frames:
+            return frames
+        return self._generate_boss_fallback_frames(world)
 
     def _load_boss_frames_from_dir(self, world: int) -> Optional[Dict[str, List[pygame.Surface]]]:
         base_dir = ASSET_DIR / "bosses" / f"world{world}"
@@ -1190,6 +1267,37 @@ class AssetCache:
         if all(not frames for frames in animations.values()):
             return None
         return animations
+
+    def _generate_boss_fallback_frames(self, world: int) -> Dict[str, List[pygame.Surface]]:
+        """Create placeholder boss animations using themed colors when assets are missing."""
+        visuals = BOSS_VISUALS.get(world, {})
+        primary = visuals.get("primary", (140, 140, 200))
+        secondary = visuals.get("secondary", (80, 80, 120))
+        accent = visuals.get("accent", (255, 200, 120))
+        size = (96, 96)
+
+        def make_frame(scale: float, pulse: int) -> pygame.Surface:
+            surf = pygame.Surface(size, pygame.SRCALPHA)
+            pygame.draw.circle(surf, secondary, (48, 60), int(34 * scale))
+            pygame.draw.circle(surf, primary, (48, 52), int(28 * scale))
+            pygame.draw.circle(surf, accent, (48, 40), int(max(8, 14 * scale)))
+            if pulse > 0:
+                pygame.draw.circle(surf, (255, 255, 255, 60), (48, 52), int(30 * scale + pulse), width=2)
+            return surf
+
+        idle = [make_frame(1.0 + 0.02 * i, 0) for i in range(6)]
+        walk = [make_frame(1.05 + 0.03 * math.sin(i / 2), 4) for i in range(6)]
+        attack1 = [make_frame(1.1 + 0.05 * math.sin(i / 2), 8) for i in range(6)]
+        attack2 = [make_frame(1.15 + 0.06 * math.sin(i / 1.5), 10) for i in range(6)]
+        death = [make_frame(max(0.2, 1.0 - 0.08 * i), 0) for i in range(6)]
+
+        return {
+            "idle": idle,
+            "walk": walk,
+            "attack1": attack1,
+            "attack2": attack2,
+            "death": death,
+        }
 
     def _load_boss_frames_from_sheet(self, world: int) -> Optional[Dict[str, List[pygame.Surface]]]:
         sheet_path = ASSET_DIR / "bosses" / f"boss_world{world}.png"
@@ -2553,6 +2661,7 @@ class Player(pygame.sprite.Sprite):
         self.friction = 0.82
         self.max_speed = 6
         self.jump_speed = -12
+        self.base_max_health = 5
         self.gravity = 0.5
         self.max_fall = 10
         self.slow_frames = 0
@@ -2711,6 +2820,7 @@ class Player(pygame.sprite.Sprite):
         self.velocity.x = max(-self.max_speed, min(self.max_speed, self.velocity.x))
 
         jump_input = controller.jump
+        jump_pressed = getattr(controller, "jump_pressed", False)
         down_input = controller.down
 
         if self.can_fly:
@@ -2721,11 +2831,13 @@ class Player(pygame.sprite.Sprite):
             elif controller.down or vertical_axis >= 0.35 or down_input:
                 self.velocity.y = self.fly_speed
         else:
-            if jump_input and self.on_ground:
+            # Allow jump only from the ground (no mid-air jumps)
+            if (jump_pressed or jump_input) and self.on_ground:
                 self.velocity.y = self.jump_speed
                 self.on_ground = False
                 if self.sound:
                     self.sound.play_event("player_jump")
+            # No bonus movement skills: only single jump when grounded
 
             self.velocity.y += self.gravity
             if self.velocity.y > self.max_fall:
@@ -3255,7 +3367,8 @@ class Boss(pygame.sprite.Sprite):
         self._animation_hold_until: Optional[int] = None
 
         profile = BOSS_PROFILES.get(world, DEFAULT_BOSS_PROFILE)
-        self.max_health = profile.max_health
+        # Scale health upward by world and add a small global multiplier
+        self.max_health = int(profile.max_health * (1.1 + 0.08 * (world - 1)))
         self.health = self.max_health
         self._short_base_cd = profile.short_cooldown
         self._long_base_cd = profile.long_cooldown
@@ -3264,8 +3377,17 @@ class Boss(pygame.sprite.Sprite):
         self.walk_direction = 1
         self.walk_enabled = self.walk_speed > 0
         self._current_motion = "idle"
-        self.projectile_surface = assets.boss_projectile_texture(world)
+        try:
+            self.projectile_surface = assets.boss_projectile_texture(world)
+        except Exception:
+            # Fallback simple projectile if asset missing
+            surf = pygame.Surface((18, 18), pygame.SRCALPHA)
+            pygame.draw.circle(surf, (255, 200, 120), (9, 9), 9)
+            pygame.draw.circle(surf, (255, 255, 255), (9, 9), 5)
+            self.projectile_surface = surf
         self.facing_direction = 1
+        self.phase = 1
+        self.enraged = False
 
         self.reset_anchor((center_x, center_y))
         self.short_cooldown = random.uniform(max(0.3, self._short_base_cd * 0.3), self._short_base_cd)
@@ -3402,17 +3524,40 @@ class Boss(pygame.sprite.Sprite):
         dt = 1 / FPS
         if not self.defeated():
             self._apply_ground_motion(dt)
+            # Phase/enrage scaling based on remaining health
+            health_ratio = self.health / max(1, self.max_health)
+            new_phase = 3 if health_ratio < 0.35 else 2 if health_ratio < 0.7 else 1
+            if new_phase != self.phase:
+                self.phase = new_phase
+                # Increase aggression on phase shifts
+                self._short_base_cd *= 0.85
+                self._long_base_cd *= 0.9
+                self.walk_speed *= 1.05
+                self._reset_short_cooldown()
+                self._reset_long_cooldown()
+            if not self.enraged and health_ratio < 0.4:
+                self.enraged = True
+                self.walk_speed *= 1.1
+                self._short_base_cd *= 0.8
+                self._long_base_cd *= 0.8
+                self._reset_short_cooldown()
+                self._reset_long_cooldown()
         self.rect.centerx = int(self.position.x)
         self.rect.bottom = int(self.position.y)
         self._home = pygame.Vector2(self.position)
         self.short_cooldown = max(0.0, self.short_cooldown - dt)
         self.long_cooldown = max(0.0, self.long_cooldown - dt)
+        if hasattr(self, "stagger_timer") and self.stagger_timer > 0:
+            self.stagger_timer = max(0.0, self.stagger_timer - dt)
         self._update_animation(dt)
 
     def perform_attacks(self, player: "Player", projectiles: pygame.sprite.Group) -> None:
         if self.defeated():
             return
-        if self.short_cooldown <= 0.0:
+        # Use long cooldown for heavy attacks, short for lighter spam
+        if self.long_cooldown <= 0.0 and getattr(self, "stagger_timer", 0) <= 0:
+            self._heavy_attack(player, projectiles)
+        elif self.short_cooldown <= 0.0:
             self._basic_projectile_attack(player, projectiles)
 
     def take_damage(self, amount: int = 1) -> None:
@@ -3505,17 +3650,88 @@ class Boss(pygame.sprite.Sprite):
         if direction.length_squared() == 0:
             direction = pygame.Vector2(self.walk_direction, -0.2)
         direction = direction.normalize()
-        speed = 6.0 + self.world * 0.35
+        speed = 6.0 + self.world * 0.45 + (0.8 if self.enraged else 0)
         velocity = direction * speed
-        self._spawn_projectile(
-            self.projectile_surface,
-            (int(origin.x), int(origin.y)),
-            velocity,
-            projectiles,
-        )
-        self.short_cooldown = max(0.6, self._short_base_cd * 0.9)
+        # Fire a small spread based on world/phase
+        spread_count = max(1, 1 + (self.world // 4) + max(0, self.phase - 1))
+        angle_step = 10
+        base_angle = math.degrees(math.atan2(direction.y, direction.x))
+        for i in range(spread_count):
+            offset = (i - (spread_count - 1) / 2) * angle_step
+            rad = math.radians(base_angle + offset)
+            vel = pygame.Vector2(math.cos(rad), math.sin(rad)) * speed
+            self._spawn_projectile(
+                self.projectile_surface,
+                (int(origin.x), int(origin.y)),
+                vel,
+                projectiles,
+            )
+        self.short_cooldown = max(0.5, self._short_base_cd * 0.8)
         if "attack1" in self.animations:
             self._set_animation_state("attack1", force=True, hold=0.4)
+
+    def _heavy_attack(self, player: "Player", projectiles: pygame.sprite.Group) -> None:
+        """World-scaled heavy attack: mix of rain, dash, and volleys."""
+        choice_pool = []
+        choice_pool.append(self._volley_attack)
+        if self.world >= 3:
+            choice_pool.append(self._rain_attack)
+        if self.world >= 5:
+            choice_pool.append(self._dash_attack)
+        attack_fn = random.choice(choice_pool)
+        attack_fn(player, projectiles)
+        self._reset_long_cooldown()
+        # Add a small short cooldown buffer so heavy attacks don't chain instantly
+        self.short_cooldown = max(self.short_cooldown, 0.6)
+
+    def _volley_attack(self, player: "Player", projectiles: pygame.sprite.Group) -> None:
+        """Fan volley that scales with world/phase."""
+        origin = pygame.Vector2(self.rect.centerx, self.rect.centery - self.rect.height * 0.35)
+        target = pygame.Vector2(player.rect.center)
+        base_dir = (target - origin).normalize() if target != origin else pygame.Vector2(self.walk_direction, 0)
+        volleys = max(2, 1 + (self.world // 3) + max(0, self.phase - 1))
+        angle_step = 8 + max(0, 3 - self.world // 2)
+        speed = 6.5 + self.world * 0.4 + (1.0 if self.enraged else 0)
+        base_angle = math.degrees(math.atan2(base_dir.y, base_dir.x))
+        for i in range(volleys):
+            offset = (i - (volleys - 1) / 2) * angle_step
+            rad = math.radians(base_angle + offset)
+            vel = pygame.Vector2(math.cos(rad), math.sin(rad)) * speed
+            self._spawn_projectile(self.projectile_surface, (int(origin.x), int(origin.y)), vel, projectiles)
+        if "attack2" in self.animations:
+            self._set_animation_state("attack2", force=True, hold=0.5)
+
+    def _rain_attack(self, player: "Player", projectiles: pygame.sprite.Group) -> None:
+        """Spawn falling projectiles from above the player area."""
+        columns = max(3, 2 + self.world // 3 + max(0, self.phase - 1))
+        spacing = SCREEN_WIDTH // max(4, columns + 1)
+        top_y = -40
+        speed = 5.0 + 0.5 * self.world
+        for i in range(columns):
+            x = 40 + i * spacing + random.randint(-12, 12)
+            vel = pygame.Vector2(0, speed + random.uniform(-0.6, 0.6))
+            self._spawn_projectile(self.projectile_surface, (x, top_y), vel, projectiles)
+        self._reset_short_cooldown(1.2)
+        if "attack2" in self.animations:
+            self._set_animation_state("attack2", force=True, hold=0.6)
+
+    def _dash_attack(self, player: "Player", projectiles: pygame.sprite.Group) -> None:
+        """Quick ground dash toward player with a small shockwave projectile."""
+        direction = 1 if player.rect.centerx >= self.rect.centerx else -1
+        self._set_facing(direction)
+        dash_distance = 180 + 12 * self.world
+        # Move instantly; if collision logic existed we'd integrate, but here we slide
+        self.position.x = self._clamp_x(int(self.position.x + dash_distance * direction))
+        self.rect.centerx = int(self.position.x)
+        # Shockwave
+        speed = 7.0 + self.world * 0.4
+        shock_dir = pygame.Vector2(direction, 0)
+        for offset in (-1, 0, 1):
+            vel = pygame.Vector2(direction, 0.08 * offset) * speed
+            origin = (self.rect.centerx, self.rect.centery - 20)
+            self._spawn_projectile(self.projectile_surface, origin, vel, projectiles)
+        self._set_animation_state("attack2", force=True, hold=0.35)
+        self._reset_short_cooldown(0.8)
 
 
 class Goal(pygame.sprite.Sprite):
@@ -4730,6 +4946,8 @@ def play_first_entry_cutscene(game: "Game") -> None:
     New opening cutscene: diagnostics -> portal spin-up -> reality breach.
     Skippable via keyboard/mouse/controller after text appears.
     """
+    # Clear any lingering input suppression so A/Start works immediately
+    game._suppress_accept_until = 0.0
     # Ensure no stale suppression blocks the prompt
     game._suppress_accept_until = 0.0
     game.pause_speedrun(True)
@@ -4766,6 +4984,10 @@ def play_first_entry_cutscene(game: "Game") -> None:
                 game.quit()
                 game.pause_speedrun(False)
                 return
+            # Always allow immediate accept via controller/keyboard/mouse once this scene is active
+            if event.type == pygame.JOYBUTTONDOWN and event.button in (0, 7):
+                elapsed = duration
+                break
             if event.type in (pygame.KEYDOWN, pygame.KEYUP):
                 last_device = "keyboard"
                 game.last_input_device = "keyboard"
@@ -4852,18 +5074,7 @@ def play_first_entry_cutscene(game: "Game") -> None:
                 game.screen.blit(render, render.get_rect(center=(SCREEN_WIDTH // 2, y)))
 
         # Hint
-        if elapsed > 1.0:
-            can_skip = True
-            hint_alpha = int((math.sin(time.time() * 4) * 0.5 + 0.5) * 180)
-            if last_device == "controller":
-                hint_text = "Press A/Start to continue"
-            elif last_device == "mouse":
-                hint_text = "Click to continue"
-            else:
-                hint_text = "Press Enter/Space to continue"
-            hint = hint_font.render(hint_text, True, WHITE)
-            hint.set_alpha(hint_alpha)
-            game.screen.blit(hint, hint.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT - 70)))
+        # No hint text; cutscene ends on input without on-screen prompt
 
         # Subtle vignette
         vignette = pygame.Surface(SCREEN_SIZE, pygame.SRCALPHA)
@@ -4875,6 +5086,9 @@ def play_first_entry_cutscene(game: "Game") -> None:
         pygame.display.flip()
         clock.tick(FPS)
 
+    # Suppress immediate accept in the next scene and clear any leftover inputs
+    game._suppress_accept_until = time.time() + 0.4
+    pygame.event.clear()
     game.pause_speedrun(False)
 def play_final_cutscene(game: "Game") -> None:
     game.pause_speedrun(True)
@@ -5010,9 +5224,10 @@ def play_final_cutscene(game: "Game") -> None:
             if fade_elapsed > 5.0:
                 fade = pygame.Surface(SCREEN_SIZE)
                 fade.fill((255, 255, 255))
-                fade.set_alpha(int(255 * min((fade_elapsed - 5.0) / 2.0, 1)))
+                # Fully white fade faster and to 100%
+                fade.set_alpha(int(255 * min((fade_elapsed - 5.0) / 1.0, 1)))
                 game.screen.blit(fade, (0, 0))
-                if fade_elapsed > 7.0:
+                if fade_elapsed > 6.5:
                     break
         else:
             game.screen.blit(frame, (0, 0))
@@ -6587,7 +6802,7 @@ class CreditsScene(Scene):
         self.shards: List["CreditsScene.Shard"] = []
         w, h = self.game.screen.get_size()
         # Start below the bottom edge so credits scroll up onto the screen (matches title screen behavior)
-        self.scroll_y = h + 40  # start near the bottom edge so credits appear quickly
+        self.scroll_y = h - 40  # lowered spawn height so they begin visible sooner
         self.reset()
 
         self.game.stop_music()
@@ -6604,7 +6819,7 @@ class CreditsScene(Scene):
     def reset(self):
         w, h = self.game.screen.get_size()
         # Keep spawn below the viewport so the first lines scroll into view
-        self.scroll_y = h + 40
+        self.scroll_y = h - 40
         self.done = False
         self.prompt_blink_timer = 0
         self.prompt_visible = True
@@ -6863,6 +7078,10 @@ class TitleScene(Scene):
         self.game.sound.play_event("menu_confirm")
         self.game.change_scene(LevelSelectScene)
 
+    def open_shops_menu(self) -> None:
+        self.game.sound.play_event("menu_confirm")
+        self.game.change_scene(ShopsHubScene)
+
     # Secret flight code: down down up up right left right left a b enter
     _flight_code = [
         pygame.K_DOWN, pygame.K_DOWN, pygame.K_UP, pygame.K_UP,
@@ -6902,6 +7121,7 @@ class TitleScene(Scene):
                     self.continue_game,
                     enabled=lambda: SAVE_FILE.exists(),
                 ),
+                MenuEntry(lambda: " Shops", self.open_shops_menu),
                 MenuEntry(lambda: " View Credits", self.play_credits),
                 MenuEntry(lambda: " Settings", self.open_settings),
                 MenuEntry(lambda: " Quit", self.quit_game),
@@ -7022,6 +7242,15 @@ class TitleScene(Scene):
     def open_level_editor(self) -> None:
         # Disabled: Level editor is not accessible from the title screen
         pass
+    def open_cosmetics_shop(self) -> None:
+        from main import CosmeticsShopScene
+        self.game.sound.play_event("menu_confirm")
+        self.game.change_scene(CosmeticsShopScene)
+
+    def open_skills_shop(self) -> None:
+        from main import SkillsShopScene
+        self.game.sound.play_event("menu_confirm")
+        self.game.change_scene(SkillsShopScene)
 
     def quit_game(self) -> None:
         self.game.quit()
@@ -7272,6 +7501,29 @@ class LevelSelectScene(Scene):
                 else:
                     self.world = self.world + 1
                     self.level = 1
+        if event.type == pygame.JOYHATMOTION:
+            hx, hy = event.value
+            # Up/Down already come in via injected KEYDOWN events; only handle left/right here to avoid double steps
+            if hx == -1:
+                if self.world == 1:
+                    self.world = self.boss_world
+                    self.level = 1
+                elif self.world == self.boss_world:
+                    self.world = self.max_world
+                    self.level = self.max_level
+                else:
+                    self.world = self.world - 1
+                    self.level = 1
+            elif hx == 1:
+                if self.world == self.max_world:
+                    self.world = self.boss_world
+                    self.level = 1
+                elif self.world == self.boss_world:
+                    self.world = 1
+                    self.level = 1
+                else:
+                    self.world = self.world + 1
+                    self.level = 1
 
     def update(self, dt: float) -> None:
         self.blink = (self.blink + 1) % 60
@@ -7293,6 +7545,369 @@ class LevelSelectScene(Scene):
         if self.blink < 30:
             draw_center_text(surface, font_small, "ENTER to start  |  ESC to return", 520, WHITE)
 
+
+
+class CosmeticsShopScene(Scene):
+    """Cosmetics shop for outfits and trails."""
+    def __init__(self, game: "Game"):
+        super().__init__(game)
+        self.outfit_costs = {
+            "Default": 0,
+            "Neon Runner": 15,
+            "Crimson Armor": 20,
+            "Midnight": 20,
+            "Gold": 25,
+        }
+        self.trail_costs = {
+            "Default": 0,
+            "Glitter": 12,
+            "Cyber": 15,
+            "Ghost": 15,
+            "Inferno": 18,
+        }
+        self._rebuild_menu()
+
+    def _owned(self, kind: str) -> List[str]:
+        key_map = {
+            "outfit": "owned_outfits",
+            "trail": "owned_trails",
+        }
+        key = key_map.get(kind, "")
+        return list(self.game.cosmetics.get(key, []))
+
+    def _label(self, kind: str, name: str, cost: int) -> str:
+        owned = name in self._owned(kind)
+        selected = self.game.cosmetics.get(kind, "Default") == name
+        if selected:
+            status = "Selected"
+        elif owned or cost == 0:
+            status = "Owned"
+        else:
+            status = f"Cost {cost}"
+        return f"{name} [{status}]"
+
+    def _rebuild_menu(self) -> None:
+        entries: List[MenuEntry] = []
+        entries.append(MenuEntry(lambda: "-- Outfits --", lambda: None, enabled=False))
+        entries.append(MenuEntry(lambda: " ", lambda: None, enabled=False))
+        for name, cost in self.outfit_costs.items():
+            entries.append(
+                MenuEntry(
+                    lambda n=name, c=cost: self._label("outfit", n, c),
+                    lambda n=name, c=cost: self._buy_or_select("outfit", n, c),
+                )
+            )
+        entries.append(MenuEntry(lambda: " ", lambda: None, enabled=False))
+        entries.append(MenuEntry(lambda: "-- Trails --", lambda: None, enabled=False))
+        entries.append(MenuEntry(lambda: " ", lambda: None, enabled=False))
+        for name, cost in self.trail_costs.items():
+            entries.append(
+                MenuEntry(
+                    lambda n=name, c=cost: self._label("trail", n, c),
+                    lambda n=name, c=cost: self._buy_or_select("trail", n, c),
+                )
+            )
+        entries.append(MenuEntry(lambda: "Back", lambda: "exit"))
+        self.menu = VerticalMenu(entries, sound=self.game.sound)
+
+    def _buy_or_select(self, kind: str, name: str, cost: int) -> None:
+        coins = getattr(self.game.progress, "coins", 0)
+        owned_map = {
+            "outfit": "owned_outfits",
+            "trail": "owned_trails",
+            "hat": "owned_hats",
+        }
+        owned_key = owned_map.get(kind, "")
+        owned = self.game.cosmetics.get(owned_key, [])
+        if name in owned or cost == 0:
+            self.game.cosmetics[kind] = name
+        else:
+            if coins < cost:
+                self.game.sound.play_event("menu_move")
+                return
+            coins -= cost
+            owned.append(name)
+            self.game.cosmetics[owned_key] = owned
+            self.game.cosmetics[kind] = name
+            self.game.progress.coins = coins
+        # Apply tint immediately if outfit changed
+        if kind == "outfit":
+            self.game.player_color = OUTFIT_COLORS.get(name, self.game.player_color)
+        if kind == "hat":
+            # no immediate sprite change beyond overlay color
+            pass
+        self.game.progress.save(
+            self.game.progress.world,
+            self.game.progress.level,
+            getattr(self.game, "player_color", None),
+            coins=coins,
+            skills=self.game.skills,
+            cosmetics=self.game.cosmetics,
+        )
+        self._rebuild_menu()
+
+    def handle_event(self, event: pygame.event.Event) -> None:
+        if event.type == pygame.QUIT:
+            self.game.quit()
+        elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+            self.game.change_scene(TitleScene)
+        else:
+            result = self.menu.handle_event(event)
+            if result == "exit":
+                self.game.change_scene(TitleScene)
+
+    def update(self, dt: float) -> None:
+        pass
+
+    def draw(self, surface: pygame.Surface) -> None:
+        surface.fill((12, 12, 28))
+        title_font = self.game.assets.font(48, True)
+        draw_glitch_text(surface, title_font, "COSMETICS SHOP", 70, WHITE, self.game.settings["glitch_fx"])
+        info_font = self.game.assets.font(24, False)
+        coins = getattr(self.game.progress, "coins", 0)
+        draw_center_text(surface, info_font, f"Coins: {coins}", 130, (255, 223, 70))
+        current = self.game.assets.font(22, False)
+        draw_center_text(surface, current, f"Outfit: {self.game.cosmetics.get('outfit', 'Default')}", 165, (200, 220, 255))
+        draw_center_text(surface, current, f"Trail: {self.game.cosmetics.get('trail', 'Default')}", 195, (200, 220, 255))
+        draw_center_text(surface, self.game.assets.font(18, False), "More outfit textures coming soon.", 225, (180, 200, 220))
+        # Draw menu higher with extra spacing by faking a taller y anchor
+        self.menu.draw(surface, self.game.assets, SCREEN_HEIGHT // 2 - 80, self.game.settings["glitch_fx"])
+
+
+class HatShopScene(Scene):
+    """Dedicated hats shop."""
+    def __init__(self, game: "Game"):
+        super().__init__(game)
+        self.hat_costs = {
+            "Default": 0,
+            "Wizard": 12,
+            "Pilot": 10,
+            "Halo": 18,
+            "Viking": 16,
+        }
+        self._rebuild_menu()
+
+    def _owned(self) -> List[str]:
+        return list(self.game.cosmetics.get("owned_hats", []))
+
+    def _label(self, name: str, cost: int) -> str:
+        owned = name in self._owned()
+        selected = self.game.cosmetics.get("hat", "Default") == name
+        if selected:
+            status = "Selected"
+        elif owned or cost == 0:
+            status = "Owned"
+        else:
+            status = f"Cost {cost}"
+        return f"{name} [{status}]"
+
+    def _rebuild_menu(self) -> None:
+        entries: List[MenuEntry] = []
+        entries.append(MenuEntry(lambda: "-- Hats --", lambda: None, enabled=False))
+        entries.append(MenuEntry(lambda: " ", lambda: None, enabled=False))
+        for name, cost in self.hat_costs.items():
+            entries.append(MenuEntry(lambda n=name, c=cost: self._label(n, c), lambda n=name, c=cost: self._buy_or_select(n, c)))
+        entries.append(MenuEntry(lambda: " ", lambda: None, enabled=False))
+        entries.append(MenuEntry(lambda: "Back", lambda: "exit"))
+        self.menu = VerticalMenu(entries, sound=self.game.sound)
+
+    def _buy_or_select(self, name: str, cost: int) -> None:
+        coins = getattr(self.game.progress, "coins", 0)
+        owned = self._owned()
+        if name in owned or cost == 0:
+            self.game.cosmetics["hat"] = name
+        else:
+            if coins < cost:
+                self.game.sound.play_event("menu_move")
+                return
+            coins -= cost
+            owned.append(name)
+            self.game.cosmetics["owned_hats"] = owned
+            self.game.cosmetics["hat"] = name
+            self.game.progress.coins = coins
+        self.game.progress.save(
+            self.game.progress.world,
+            self.game.progress.level,
+            getattr(self.game, "player_color", None),
+            coins=getattr(self.game.progress, "coins", coins),
+            skills=self.game.skills,
+            cosmetics=self.game.cosmetics,
+        )
+        self._rebuild_menu()
+
+    def handle_event(self, event: pygame.event.Event) -> None:
+        if event.type == pygame.QUIT:
+            self.game.quit()
+        elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+            self.game.change_scene(TitleScene)
+        else:
+            result = self.menu.handle_event(event)
+            if result == "exit":
+                self.game.change_scene(TitleScene)
+
+    def update(self, dt: float) -> None:
+        pass
+
+    def draw(self, surface: pygame.Surface) -> None:
+        surface.fill((14, 10, 24))
+        title_font = self.game.assets.font(48, True)
+        draw_glitch_text(surface, title_font, "HAT SHOP", 70, WHITE, self.game.settings["glitch_fx"])
+        info_font = self.game.assets.font(22, False)
+        coins = getattr(self.game.progress, "coins", 0)
+        draw_center_text(surface, info_font, f"Coins: {coins}", 130, (255, 223, 70))
+        current = self.game.assets.font(22, False)
+        draw_center_text(surface, current, f"Hat: {self.game.cosmetics.get('hat', 'Default')}", 165, (200, 220, 255))
+        draw_center_text(surface, self.game.assets.font(18, False), "More hat textures coming soon.", 195, (180, 200, 220))
+        self.menu.draw(surface, self.game.assets, SCREEN_HEIGHT // 2 - 60, self.game.settings["glitch_fx"])
+
+
+class SkillsShopScene(Scene):
+    """Skills shop with purchasable upgrades."""
+    def __init__(self, game: "Game"):
+        super().__init__(game)
+        self.costs = {
+            "rapid_charge": 5,
+            "blast_radius": 8,
+            "shield_pulse": 6,
+            "reflective_shield": 6,
+            "stagger": 7,
+            "extra_health": 5,  # per level
+        }
+        self._rebuild_menu()
+
+    def _rebuild_menu(self) -> None:
+        entries = [
+            MenuEntry(lambda: self._label("Rapid Charge", "rapid_charge"), lambda: self._buy_skill("rapid_charge")),
+            MenuEntry(lambda: self._label("Blast Radius", "blast_radius"), lambda: self._buy_skill("blast_radius")),
+            MenuEntry(lambda: self._label("Shield Pulse", "shield_pulse"), lambda: self._buy_skill("shield_pulse")),
+            MenuEntry(lambda: self._label("Reflective Shield", "reflective_shield"), lambda: self._buy_skill("reflective_shield")),
+            MenuEntry(lambda: self._label("Stagger", "stagger"), lambda: self._buy_skill("stagger")),
+            MenuEntry(self._extra_health_label, self._buy_extra_health),
+            MenuEntry(lambda: "Back", lambda: "exit"),
+        ]
+        self.menu = VerticalMenu(entries, sound=self.game.sound)
+
+    def _label(self, name: str, key: str) -> str:
+        owned = self.game.skills.get(key, False)
+        return f"{name} [{'Owned' if owned else f'Cost {self.costs.get(key, 0)}'}]"
+
+    def _extra_health_label(self) -> str:
+        lvl = int(self.game.skills.get("extra_health_levels", 0) or 0)
+        status = "Maxed" if lvl >= 25 else f"Cost {self.costs.get('extra_health', 5)}"
+        return f"Extra Health (Lv {lvl}/25) [{status}]"
+
+    def handle_event(self, event: pygame.event.Event) -> None:
+        if event.type == pygame.QUIT:
+            self.game.quit()
+        elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+            self.game.change_scene(TitleScene)
+        else:
+            result = self.menu.handle_event(event)
+            if callable(result):
+                result()
+                return
+            if result == "exit":
+                self.game.change_scene(TitleScene)
+
+    def update(self, dt: float) -> None:
+        pass
+
+    def draw(self, surface: pygame.Surface) -> None:
+        surface.fill((10, 10, 24))
+        title_font = self.game.assets.font(48, True)
+        draw_glitch_text(surface, title_font, "SKILLS SHOP", 140, WHITE, self.game.settings["glitch_fx"])
+        info_font = self.game.assets.font(22, False)
+        coins = getattr(self.game.progress, "coins", 0)
+        draw_center_text(surface, info_font, f"Coins: {coins}", 200, (255, 223, 70))
+        draw_center_text(surface, info_font, "Select a skill to purchase. Purchased skills stay active.", 230, (200, 200, 230))
+        # Position menu a bit lower under the instruction text
+        self.menu.draw(surface, self.game.assets, 320, self.game.settings["glitch_fx"])
+
+    def _buy_skill(self, key: str):
+        if self.game.skills.get(key):
+            return
+        cost = self.costs.get(key, 5)
+        coins = getattr(self.game.progress, "coins", 0)
+        if coins < cost:
+            return
+        coins -= cost
+        self.game.skills[key] = True
+        self.game.progress.coins = coins
+        self.game.progress.save(self.game.progress.world, self.game.progress.level, getattr(self.game, "player_color", None), coins=coins, skills=self.game.skills, cosmetics=self.game.cosmetics)
+        self._rebuild_menu()
+        self.game.sound.play_event("menu_confirm")
+
+    def _buy_extra_health(self):
+        current = int(self.game.skills.get("extra_health_levels", 0) or 0)
+        if current >= 25:
+            return
+        cost = self.costs.get("extra_health", 5)
+        coins = getattr(self.game.progress, "coins", 0)
+        if coins < cost:
+            return
+        coins -= cost
+        current += 1
+        self.game.skills["extra_health_levels"] = current
+        # Apply to player if present
+        if hasattr(self.game.scene, "player"):
+            try:
+                self.game.scene.player.max_health += 1
+                self.game.scene.player.health = min(self.game.scene.player.health + 1, self.game.scene.player.max_health)
+            except Exception:
+                pass
+        self.game.progress.coins = coins
+        self.game.progress.save(self.game.progress.world, self.game.progress.level, getattr(self.game, "player_color", None), coins=coins, skills=self.game.skills, cosmetics=self.game.cosmetics)
+        self._rebuild_menu()
+        self.game.sound.play_event("menu_confirm")
+
+
+class ShopsHubScene(Scene):
+    """Hub menu to pick between Cosmetics and Skills shops."""
+    def __init__(self, game: "Game"):
+        super().__init__(game)
+        self.menu = VerticalMenu(
+            [
+                MenuEntry(lambda: "Cosmetics Shop", self._open_cosmetics),
+                MenuEntry(lambda: "Hat Shop", self._open_hats),
+                MenuEntry(lambda: "Skills Shop", self._open_skills),
+                MenuEntry(lambda: "Back", lambda: "exit"),
+            ],
+            sound=self.game.sound,
+        )
+
+    def _open_cosmetics(self):
+        self.game.sound.play_event("menu_confirm")
+        self.game.change_scene(CosmeticsShopScene)
+
+    def _open_skills(self):
+        self.game.sound.play_event("menu_confirm")
+        self.game.change_scene(SkillsShopScene)
+    def _open_hats(self):
+        self.game.sound.play_event("menu_confirm")
+        self.game.change_scene(HatShopScene)
+
+    def handle_event(self, event: pygame.event.Event) -> None:
+        if event.type == pygame.QUIT:
+            self.game.quit()
+        elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+            self.game.change_scene(TitleScene)
+        else:
+            result = self.menu.handle_event(event)
+            if callable(result):
+                return result()
+            if result == "exit":
+                self.game.change_scene(TitleScene)
+
+    def update(self, dt: float) -> None:
+        pass
+
+    def draw(self, surface: pygame.Surface) -> None:
+        surface.fill((12, 12, 26))
+        title_font = self.game.assets.font(48, True)
+        draw_glitch_text(surface, title_font, "SHOPS", 140, WHITE, self.game.settings["glitch_fx"])
+        info_font = self.game.assets.font(22, False)
+        draw_center_text(surface, info_font, "Choose a shop to enter.", 220, (200, 200, 230))
+        self.menu.draw(surface, self.game.assets, SCREEN_HEIGHT // 2 + 40, self.game.settings["glitch_fx"])
 
 
 class GameplayScene(Scene):
@@ -7594,9 +8209,22 @@ class GameplayScene(Scene):
         # Load character from settings
         settings_mgr = SettingsManager(SETTINGS_FILE)
         character_name = settings_mgr.data.get("character", "player")
-        scene.player = Player(spawn, game.sound, color=game.player_color, character_name=character_name)
+        scene.player = Player(spawn, game.sound, color=game.active_outfit_color(), character_name=character_name)
+        scene._apply_player_skills()
+        scene.trail_color = game.active_trail_color()
+        scene._player_trail = []
         scene._snap_camera_to_player()
         return scene
+
+    def _apply_player_skills(self) -> None:
+        """Sync unlocked skills to the active player instance (movement + health)."""
+        if not hasattr(self, "player"):
+            return
+        self.player.skills = getattr(self.game, "skills", {})
+        extra_hp = int(self.player.skills.get("extra_health_levels", 0) or 0)
+        base_hp = getattr(self.player, "base_max_health", self.player.max_health)
+        self.player.max_health = base_hp + extra_hp
+        self.player.health = self.player.max_health
     def __init__(self, game: "Game", world: int, level: int):
         super().__init__(game)
         self.world = world
@@ -7616,7 +8244,10 @@ class GameplayScene(Scene):
             character_name = settings_mgr.data.get("character", "player")
         if not form_name:
             form_name = None
-        self.player = Player(spawn_point, self.game.sound, color=self.game.player_color, character_name=character_name, form_name=form_name)
+        self.player = Player(spawn_point, self.game.sound, color=self.game.active_outfit_color(), character_name=character_name, form_name=form_name)
+        self._apply_player_skills()
+        self.trail_color = self.game.active_trail_color()
+        self._player_trail: List[Dict[str, Any]] = []
         # Enable flight cheat if unlocked
         if hasattr(self.game, "flight_cheat_enabled") and self.game.flight_cheat_enabled:
             if hasattr(self.player, "enable_flight"):
@@ -7672,6 +8303,7 @@ class GameplayScene(Scene):
         spawn_point = self._compute_spawn_point()
         self.player.spawn = pygame.Vector2(spawn_point)
         self.player.respawn()
+        self._apply_player_skills()
         self.tower_timer = 3.0 if self.is_tower else 0
         self.dynamic_glitch_active = False
         self.dynamic_glitch_end = 0.0
@@ -7865,6 +8497,50 @@ class GameplayScene(Scene):
         for sprite in group:
             surface.blit(sprite.image, sprite.rect.move(-self.camera_x, -self.camera_y))
 
+    def _update_player_trail(self, dt: float) -> None:
+        if not getattr(self, "trail_color", None):
+            return
+        speed = abs(self.player.velocity.x) + abs(self.player.velocity.y)
+        if speed > 0.5:
+            self._player_trail.append({"pos": pygame.Vector2(self.player.rect.center), "life": 0.35})
+        alive: List[Dict[str, Any]] = []
+        for t in self._player_trail:
+            t["life"] -= dt
+            if t["life"] > 0:
+                alive.append(t)
+        self._player_trail = alive
+
+    def _draw_player_trail(self, surface: pygame.Surface) -> None:
+        if not getattr(self, "trail_color", None) or not getattr(self, "_player_trail", None):
+            return
+        base = self.trail_color
+        for t in self._player_trail:
+            alpha = int(160 * max(0.0, t["life"] / 0.35))
+            r = max(2, int(6 * (t["life"] / 0.35)))
+            pygame.draw.circle(surface, (*base, alpha), (int(t["pos"].x - self.camera_x), int(t["pos"].y - self.camera_y)), r)
+
+    def _draw_hat(self, surface: pygame.Surface, target_rect: pygame.Rect, offset: Tuple[int, int] = (0, 0)) -> None:
+        color = self.game.active_hat_color()
+        if not color:
+            return
+        hat_width = int(target_rect.width * 0.9)
+        hat_height = max(10, target_rect.height // 3)
+        top = target_rect.top + offset[1] - hat_height + 6
+        left = target_rect.left + offset[0] + (target_rect.width - hat_width) // 2
+        brim_height = max(4, hat_height // 5)
+        brim_rect = pygame.Rect(left - 6, top + hat_height - brim_height, hat_width + 12, brim_height)
+        crown_rect = pygame.Rect(left, top, hat_width, hat_height - brim_height)
+        # Brim
+        pygame.draw.rect(surface, (*color, 230), brim_rect, border_radius=4)
+        # Crown with a subtle highlight band
+        pygame.draw.rect(surface, (*color, 230), crown_rect, border_radius=6)
+        band_height = max(3, brim_height - 1)
+        band_rect = pygame.Rect(crown_rect.left, crown_rect.centery - band_height // 2, crown_rect.width, band_height)
+        pygame.draw.rect(surface, (255, 255, 255, 180), band_rect, border_radius=3)
+        # Slight top curve/rounded cap
+        cap_rect = crown_rect.inflate(-crown_rect.width * 0.2, -brim_height * 1.2)
+        pygame.draw.ellipse(surface, (*color, 200), cap_rect)
+
     def update(self, dt: float) -> None:
         self.content.platforms.update()
         self._carry_with_platforms()
@@ -7874,6 +8550,7 @@ class GameplayScene(Scene):
             self.player.update(self.content.platforms, neutral_input)
         else:
             self.player.update(self.content.platforms, self.game.input_state)
+        self._update_player_trail(dt)
         self.content.enemies.update()
         self.content.specials.update()
         self.content.coins.update()
@@ -7917,7 +8594,7 @@ class GameplayScene(Scene):
         if coins_collected:
             self.coins_collected_count += len(coins_collected)
             self.game.progress.coins = self.coins_collected_count
-            self.game.progress.save(self.game.progress.world, self.game.progress.level, getattr(self.game, "player_color", None), coins=self.coins_collected_count)
+            self.game.progress.save(self.game.progress.world, self.game.progress.level, getattr(self.game, "player_color", None), coins=self.coins_collected_count, skills=self.game.skills, cosmetics=self.game.cosmetics)
             sound.play_event("coin_pickup")
 
         goal = self.content.goal
@@ -7997,7 +8674,7 @@ class GameplayScene(Scene):
                     play_glitch_portal_cutscene(self.game)
 
         # Persist progress along with the player's selected color
-        self.game.progress.save(self.world, self.level, getattr(self.game, "player_color", None))
+        self.game.progress.save(self.world, self.level, getattr(self.game, "player_color", None), coins=self.game.progress.coins, skills=self.game.skills, cosmetics=self.game.cosmetics)
         self._refresh_world()
 
     def draw(self, surface: pygame.Surface) -> None:
@@ -8010,7 +8687,9 @@ class GameplayScene(Scene):
         self.weather.draw(surface, (self.camera_x, self.camera_y))
         if self.content.goal:
             surface.blit(self.content.goal.image, self.content.goal.rect.move(-self.camera_x, -self.camera_y))
+        self._draw_player_trail(surface)
         surface.blit(self.player.image, self.player.rect.move(-self.camera_x, -self.camera_y))
+        self._draw_hat(surface, self.player.rect, offset=(-self.camera_x, -self.camera_y))
 
         # Draw only editor UI if in edit mode
         if hasattr(self, '_level_editor_enabled') and self._level_editor_enabled:
@@ -8303,9 +8982,15 @@ class BossArenaScene(Scene):
         spawn = (ground.rect.centerx - PLAYER_WIDTH // 2, ground.rect.top - PLAYER_HEIGHT)
         settings_mgr = SettingsManager(SETTINGS_FILE)
         character_name = settings_mgr.data.get("character", "player")
-        self.player = Player(spawn, self.game.sound, color=self.game.player_color, character_name=character_name)
+        self.player = Player(spawn, self.game.sound, color=self.game.active_outfit_color(), character_name=character_name)
         self.player.spawn = pygame.Vector2(spawn)
         self.player.respawn()
+        self.player.skills = getattr(self.game, "skills", {})
+        # Apply extra health skill
+        extra_hp_levels = int(self.game.skills.get("extra_health_levels", 0))
+        base_hp = getattr(self.player, "base_max_health", self.player.max_health)
+        self.player.max_health = base_hp + extra_hp_levels
+        self.player.health = self.player.max_health
         self.player.can_fly = False
         self.player_projectiles = pygame.sprite.Group()
         self.boss_projectiles = pygame.sprite.Group()
@@ -8313,6 +8998,17 @@ class BossArenaScene(Scene):
         self.boss = Boss(ground.rect.centerx, boss_y, world, self.game.assets)
         self.boss_origin = pygame.Vector2(self.boss.rect.midbottom)
         self.shoot_cooldown = 0.0
+        self.shield_active = False
+        self.shield_timer = 0.0
+        self.shield_cooldown = 0.0
+        self.shield_duration = 10.0
+        self.shield_recharge = 15.0
+        self.beam_cooldown = 0.0
+        self.shoot_hold = 0.0
+        self.shoot_charging = False
+        self._shoot_prev = False
+        self.trail_color = self.game.active_trail_color()
+        self._player_trail: List[Dict[str, Any]] = []
         self.state = "intro"
         self.explosion_timer = 0.0
         self.explosion_duration = 1.5
@@ -8359,21 +9055,74 @@ class BossArenaScene(Scene):
                     self.game.change_scene(TitleScene)
                 elif action == "quit":
                     self.game.quit()
-            elif event.key == pygame.K_f and self.state in ("fight", "exit"):
-                self._fire_projectile()
+            elif event.key == self.game.settings["key_map"].get("shield", pygame.K_LSHIFT) and self.state in ("fight", "exit"):
+                self._activate_shield()
+        elif event.type == pygame.JOYBUTTONDOWN and self.state in ("fight", "exit"):
+            shoot_btn = self.game.settings["controller_map"].get("shoot", 2)
+            shield_btn = self.game.settings["controller_map"].get("shield", 3)
+            if event.button == shield_btn:
+                self._activate_shield()
 
     def update(self, dt: float) -> None:
         self.shoot_cooldown = max(0.0, self.shoot_cooldown - dt)
+        # Shield timers and mutual exclusion with shooting
+        if self.shield_active:
+            self.shield_timer = max(0.0, self.shield_timer - dt)
+            if self.shield_timer <= 0:
+                self.shield_active = False
+                self.shield_cooldown = self.shield_recharge
+        else:
+            self.shield_cooldown = max(0.0, self.shield_cooldown - dt)
+
+        # Shooting logic: charge while held, fire on release (tap = normal shot, hold = big blast)
+        if self.state == "fight":
+            shooting = self.game.input_state.shoot
+            if shooting and not self._shoot_prev:
+                # start charge
+                if self.beam_cooldown <= 0:
+                    self.shoot_charging = True
+                    self.shoot_hold = 0.0
+                else:
+                    # Normal shots while beam is on cooldown
+                    if self.shoot_cooldown <= 0:
+                        self._fire_projectile()
+            if shooting and self.shoot_charging:
+                self.shoot_hold += dt
+                # Auto-fire kamehameha once fully charged (no release needed)
+                max_charge = 5.0
+                if self.shoot_hold >= max_charge and self.shoot_cooldown <= 0:
+                    self._fire_kamehameha()
+                    self.shoot_charging = False
+                    self.shoot_hold = 0.0
+            # Disable shield input while charging up the beam
+            if self.shoot_charging:
+                self.shield_active = False
+            if (not shooting) and self._shoot_prev and self.shoot_charging:
+                if self.shoot_cooldown <= 0:
+                    charge_threshold = 0.7
+                    if self.game.skills.get("rapid_charge"):
+                        charge_threshold = 0.45
+                    if self.shoot_hold >= charge_threshold:
+                        self._fire_charge_blast()
+                    else:
+                        self._fire_projectile()
+                self.shoot_charging = False
+                self.shoot_hold = 0.0
+            self._shoot_prev = shooting
+
         if self.message_timer > 0:
             self.message_timer -= dt
 
         self.platforms.update()
         self.player.update(self.platforms, self.game.input_state)
+        self._update_player_trail(dt)
         self.player_projectiles.update()
         self.boss_projectiles.update()
         self._update_explosion_effects(dt)
         if self.exit_portal and self.portal_spawn_time is None:
             self.exit_portal.update(dt)
+        if self.beam_cooldown > 0:
+            self.beam_cooldown = max(0.0, self.beam_cooldown - dt)
 
         if self.state == "intro":
             self._update_spawn_animation(dt)
@@ -8384,9 +9133,21 @@ class BossArenaScene(Scene):
             hits = pygame.sprite.spritecollide(self.boss, self.player_projectiles, dokill=True)
             if hits:
                 self.game.sound.play_event("boss_hit")
-                # Reduce player damage: each projectile does 0.5 damage (rounded up)
-                damage = max(1, int(len(hits) * 0.5 + 0.5))
+                # Sum projectile damage (defaults to 1) and apply blast bonuses
+                damage = sum(getattr(h, "damage", 1) for h in hits)
+                if damage <= 0:
+                    damage = 0
+                if self.game.skills.get("blast_radius"):
+                    for h in hits:
+                        if getattr(h, "is_charged", False):
+                            damage += 2
+                            self._charged_blast_effect(pygame.Vector2(h.rect.center))
                 self.boss.take_damage(damage)
+                # Apply stagger if skill unlocked and stagger not active
+                if self.game.skills.get("stagger") and getattr(self.boss, "stagger_timer", 0) <= 0:
+                    self.boss.stagger_timer = 1.5
+                    self.boss.short_cooldown *= 1.25
+                    self.boss.long_cooldown *= 1.25
                 if self.boss.defeated():
                     self._handle_boss_defeated()
 
@@ -8397,8 +9158,34 @@ class BossArenaScene(Scene):
         if self.state == "fight" and pygame.sprite.spritecollide(self.player, self.boss_projectiles, dokill=True):
             self.game.sound.play_event("projectile_hit")
             self.player.take_damage(1)
+        # Shield blocks boss projectiles while active
+        if self.shield_active:
+            shield_rect = self.player.rect.inflate(30, 30)
+            for proj in list(self.boss_projectiles):
+                if proj.rect.colliderect(shield_rect):
+                    if self.game.skills.get("reflective_shield"):
+                        # Bounce back toward boss and convert to player projectile so it can deal damage
+                        vel = pygame.Vector2(getattr(proj, "velocity", pygame.Vector2(-6, 0)))
+                        if vel.length_squared() == 0:
+                            vel = pygame.Vector2(-6, 0)
+                        vel.x = -vel.x
+                        vel.y = max(-2.0, -abs(vel.y))  # send slightly upward
+                        proj.velocity = vel
+                        proj.rect.move_ip(int(proj.velocity.x), int(proj.velocity.y))
+                        proj.bounced = True
+                        proj.damage = getattr(proj, "damage", 1)
+                        if proj in self.boss_projectiles:
+                            self.boss_projectiles.remove(proj)
+                        self.player_projectiles.add(proj)
+                    else:
+                        proj.kill()
 
         if not self.player.alive():
+            # On death, restore shield immediately
+            self.shield_active = False
+            self.shield_timer = 0.0
+            self.shield_cooldown = 0.0
+            self.beam_cooldown = 0.0
             self._handle_player_defeat()
 
         if self.state == "explosion":
@@ -8462,6 +9249,64 @@ class BossArenaScene(Scene):
             pygame.display.flip()
             clock.tick(60)
 
+    def _charged_blast_effect(self, center: pygame.Vector2) -> None:
+        """Small AoE clear when a charged shot lands (Blast Radius skill)."""
+        radius = 120.0
+        cleared = 0
+        for proj in list(self.boss_projectiles):
+            if pygame.Vector2(proj.rect.center).distance_to(center) <= radius:
+                proj.kill()
+                cleared += 1
+        # Add a handful of transient particles for feedback
+        for _ in range(10):
+            angle = random.uniform(0, math.tau)
+            speed = random.uniform(5.0, 10.0)
+            vel = pygame.Vector2(math.cos(angle), math.sin(angle)) * speed * 0.8
+            particle = {
+                "pos": pygame.Vector2(center),
+                "vel": vel,
+                "life": random.uniform(0.3, 0.6),
+                "size": random.randint(2, 4),
+                "color": (200, 240, 255),
+            }
+            self.explosion_particles.append(particle)
+        if cleared > 0:
+            try:
+                self.game.sound.play_event("menu_move")
+            except Exception:
+                pass
+
+    def _activate_shield(self) -> None:
+        """Turn on the temporary shield if off cooldown."""
+        if self.shield_cooldown > 0 or self.shield_active or self.state not in ("fight", "exit"):
+            return
+        self.shield_active = True
+        self.shield_timer = self.shield_duration
+        # Optional SFX hook
+        try:
+            self.game.sound.play_event("menu_confirm")
+        except Exception:
+            pass
+        if self.game.skills.get("shield_pulse"):
+            self._trigger_shield_pulse()
+
+    def _trigger_shield_pulse(self) -> None:
+        """Clear nearby boss projectiles and briefly slow the boss when the shield comes up."""
+        center = pygame.Vector2(self.player.rect.center)
+        radius = 140.0
+        cleared = 0
+        for proj in list(self.boss_projectiles):
+            if pygame.Vector2(proj.rect.center).distance_to(center) <= radius:
+                proj.kill()
+                cleared += 1
+        if getattr(self.boss, "stagger_timer", 0) < 0.5:
+            self.boss.stagger_timer = 0.5
+        if cleared > 0:
+            try:
+                self.game.sound.play_event("menu_move")
+            except Exception:
+                pass
+
     def draw(self, surface: pygame.Surface) -> None:
         surface.blit(self.background, (0, 0))
         for platform in self.platforms:
@@ -8479,13 +9324,54 @@ class BossArenaScene(Scene):
 
         self._draw_boss(surface)
 
+        self._draw_player_trail(surface)
         surface.blit(self.player.image, self.player.rect)
+        self._draw_hat(surface, self.player.rect, offset=(0, 0))
+        if self.shoot_charging and self.state == "fight" and self.beam_cooldown <= 0:
+            self._draw_charge_orb(surface)
+        if self.shield_active:
+            # Force-field shield tinted to the player's color
+            tint = getattr(self.game, "player_color", (120, 200, 255))
+            base_color = (int(tint[0]), int(tint[1]), int(tint[2]))
+            alpha_main = 140
+            alpha_glow = 70
+            shield_rect = self.player.rect.inflate(36, 36)
+            # Main ring
+            ring = pygame.Surface(shield_rect.size, pygame.SRCALPHA)
+            pygame.draw.ellipse(ring, (*base_color, alpha_main), ring.get_rect(), width=4)
+            # Inner glow
+            glow = pygame.Surface(shield_rect.size, pygame.SRCALPHA)
+            pygame.draw.ellipse(glow, (*base_color, alpha_glow), glow.get_rect().inflate(-6, -6))
+            ring.blit(glow, (0, 0), special_flags=pygame.BLEND_ADD)
+            surface.blit(ring, shield_rect)
+            if self.game.skills.get("shield_pulse"):
+                pulse = pygame.Surface(shield_rect.size, pygame.SRCALPHA)
+                pygame.draw.ellipse(pulse, (*base_color, 40), pulse.get_rect().inflate(14, 14), width=6)
+                surface.blit(pulse, shield_rect.move(-7, -7))
         self._draw_health_bars(surface)
         self._draw_explosion(surface)
         self._draw_particles(surface)
-        if self.message_timer > 0:
-            prompt = self.game.assets.font(20, True).render("Press F to fire energy bolts", True, WHITE)
-            surface.blit(prompt, prompt.get_rect(center=(SCREEN_WIDTH // 2, 520)))
+        # Persistent input hint that adapts to last input device
+        device = getattr(self.game, "last_input_device", "keyboard")
+        if device == "controller":
+            if self.shield_cooldown > 0:
+                prompt_text = f"Press X to fire  |  Shield Cooldown: {self.shield_cooldown:0.1f}s"
+            else:
+                prompt_text = "Press X to fire  |  Press Y to shield"
+            cooldown_text = f"Shield CD: {self.shield_cooldown:0.1f}s"
+        else:
+            if self.shield_cooldown > 0:
+                prompt_text = f"Press F to fire  |  Shield Cooldown: {self.shield_cooldown:0.1f}s"
+            else:
+                prompt_text = "Press F to fire  |  Press Shift to shield"
+        prompt = self.game.assets.font(20, True).render(prompt_text, True, WHITE)
+        surface.blit(prompt, prompt.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT - 60)))
+        # Draw beam cooldown just below prompts
+        cd_font = self.game.assets.font(18, False)
+        beam_cd_text = f"Beam Cooldown: {self.beam_cooldown:0.1f}s" if self.beam_cooldown > 0 else "Beam Ready"
+        beam_color = (120, 255, 160) if self.beam_cooldown <= 0 else (255, 0, 0)
+        beam_render = cd_font.render(beam_cd_text, True, beam_color)
+        surface.blit(beam_render, beam_render.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT - 36)))
 
     def _draw_exit_portal(self, surface: pygame.Surface) -> None:
         if not self.exit_portal or not self.exit_portal_base:
@@ -8510,15 +9396,90 @@ class BossArenaScene(Scene):
         draw_rect = scaled.get_rect(center=self.exit_portal.rect.center)
         surface.blit(scaled, draw_rect)
 
+    def _draw_charge_orb(self, surface: pygame.Surface) -> None:
+        """Expanding orb effect while charging; no beam shown until fire."""
+        ratio = min(1.0, (self.shoot_hold or 0.0) / 5.0)
+        if ratio <= 0:
+            return
+        center = self.player.rect.center
+        max_radius = 90
+        radius = int(24 + (max_radius - 24) * ratio)
+        orb = pygame.Surface((radius * 2, radius * 2), pygame.SRCALPHA)
+        # outer glow
+        pygame.draw.circle(orb, (60, 160, 255, 80), (radius, radius), radius)
+        # mid glow
+        pygame.draw.circle(orb, (120, 200, 255, 120), (radius, radius), int(radius * 0.72))
+        # core
+        pygame.draw.circle(orb, (200, 240, 255, 180), (radius, radius), int(radius * 0.45))
+        surface.blit(orb, orb.get_rect(center=center))
+
     def _fire_projectile(self) -> None:
         if self.state != "fight" or self.shoot_cooldown > 0:
             return
         spawn_x = self.player.rect.right if self.player.facing_right else self.player.rect.left
         spawn_y = self.player.rect.centery - 10
         projectile = PlayerProjectile(spawn_x, spawn_y, self.player.facing_right)
+        projectile.damage = 0.5
         self.player_projectiles.add(projectile)
-        self.shoot_cooldown = 0.35
+        self.shoot_cooldown = 0.20
         self.game.sound.play_event("projectile_fire")
+
+    def _fire_charge_blast(self) -> None:
+        """Fire a heavy blast after holding shoot; higher damage, slower speed."""
+        if self.state != "fight":
+            return
+        spawn_x = self.player.rect.right if self.player.facing_right else self.player.rect.left
+        spawn_y = self.player.rect.centery - 10
+        projectile = PlayerProjectile(spawn_x, spawn_y, self.player.facing_right)
+        # Scale up the projectile
+        projectile.image = pygame.transform.smoothscale(projectile.image, (32, 16))
+        projectile.rect = projectile.image.get_rect(center=projectile.rect.center)
+        projectile.damage = 4
+        projectile.is_charged = True
+        projectile.velocity_x = 14 if self.player.facing_right else -14
+        self.player_projectiles.add(projectile)
+        # Longer cooldown after a charged shot
+        self.shoot_cooldown = 0.5
+        try:
+            self.game.sound.play_event("menu_confirm")
+        except Exception:
+            pass
+
+    def _fire_kamehameha(self) -> None:
+        """Massive beam after a 5s charge; very high damage and speed."""
+        if self.state != "fight" or self.shoot_cooldown > 0:
+            return
+        spawn_x = self.player.rect.right if self.player.facing_right else self.player.rect.left
+        spawn_y = self.player.rect.centery - 10
+        # Create a large rounded beam
+        width, height = 220, 72
+        beam = pygame.sprite.Sprite()
+        beam.image = pygame.Surface((width, height), pygame.SRCALPHA)
+        # Layered ellipses for glow + core
+        for i, alpha in enumerate((90, 130, 180, 255)):
+            shrink = i * 10
+            color = (80 + i * 40, 180 + i * 15, 255)
+            pygame.draw.ellipse(beam.image, (*color, alpha), beam.image.get_rect().inflate(-shrink, -shrink // 2))
+        beam.rect = beam.image.get_rect(center=(spawn_x, spawn_y))
+        speed = 34
+        beam.velocity_x = speed if self.player.facing_right else -speed
+        beam.damage = 24
+        beam.is_charged = True
+
+        def update(self_proj: pygame.sprite.Sprite) -> None:
+            self_proj.rect.x += int(self_proj.velocity_x)
+            if self_proj.rect.right < -50 or self_proj.rect.left > SCREEN_WIDTH + 50:
+                self_proj.kill()
+
+        beam.update = update.__get__(beam, pygame.sprite.Sprite)
+        self.player_projectiles.add(beam)
+        # Longer cooldown after beam
+        self.shoot_cooldown = 1.5
+        self.beam_cooldown = 60.0
+        try:
+            self.game.sound.play_event("boss_defeat")
+        except Exception:
+            pass
 
     def _bump_player_from_boss(self) -> None:
         if self.player.rect.centerx < self.boss.rect.centerx:
@@ -8529,6 +9490,9 @@ class BossArenaScene(Scene):
             self.player.velocity.x = 6
         self.player.velocity.y = -8
         self.player.on_ground = False
+        # Shield pulse knockback if active
+        if self.shield_active and self.game.skills.get("shield_pulse"):
+            self.player.velocity.y = -10
 
     def _handle_player_defeat(self) -> None:
         self.player.respawn()
@@ -8568,7 +9532,9 @@ class BossArenaScene(Scene):
                     (255, 255, 255),
                 ]
             )
-        self.explosion_particles.append({"pos": pygame.Vector2(self.explosion_pos), "vel": vel, "life": life, "size": size, "color": color})
+            self.explosion_particles.append(
+                {"pos": pygame.Vector2(self.explosion_pos), "vel": vel, "life": life, "size": size, "color": color}
+            )
         self.boss.health = 0
         self.boss_projectiles.empty()
         self.game.sound.play_event("boss_defeat")
@@ -8606,12 +9572,14 @@ class BossArenaScene(Scene):
         if next_world == 10:
             play_glitch_portal_cutscene(self.game)
         # Save next world progress and current player color
-        self.game.progress.save(next_world, 1, getattr(self.game, "player_color", None))
+        self.game.progress.save(next_world, 1, getattr(self.game, "player_color", None), coins=self.game.progress.coins, skills=self.game.skills, cosmetics=self.game.cosmetics)
         self.game.change_scene(GameplayScene, world=next_world, level=1)
 
     def _draw_health_bars(self, surface: pygame.Surface) -> None:
         # Player health
-        bar_width = 200
+        base_bar_width = 200
+        extra_hp_levels = int(self.game.skills.get("extra_health_levels", 0))
+        bar_width = base_bar_width + max(0, extra_hp_levels) * 4  # widen bar as max health increases
         bar_height = 18
         x = 30
         y = 24
@@ -8651,6 +9619,42 @@ class BossArenaScene(Scene):
         for particle in self.explosion_particles:
             pos = (int(particle["pos"].x), int(particle["pos"].y))
             pygame.draw.circle(surface, particle["color"], pos, particle["size"])
+
+    def _update_player_trail(self, dt: float) -> None:
+        if not self.trail_color:
+            return
+        # Append a trail point each frame while the player is moving
+        speed = abs(self.player.velocity.x) + abs(self.player.velocity.y)
+        if speed > 0.5:
+            self._player_trail.append({"pos": pygame.Vector2(self.player.rect.center), "life": 0.35})
+        alive: List[Dict[str, Any]] = []
+        for t in self._player_trail:
+            t["life"] -= dt
+            if t["life"] > 0:
+                alive.append(t)
+        self._player_trail = alive
+
+    def _draw_player_trail(self, surface: pygame.Surface) -> None:
+        if not self.trail_color or not self._player_trail:
+            return
+        base = self.trail_color
+        for t in self._player_trail:
+            alpha = int(180 * max(0.0, t["life"] / 0.35))
+            r = max(2, int(6 * (t["life"] / 0.35)))
+            pygame.draw.circle(surface, (*base, alpha), (int(t["pos"].x), int(t["pos"].y)), r)
+
+    def _draw_hat(self, surface: pygame.Surface, target_rect: pygame.Rect, offset: Tuple[int, int] = (0, 0)) -> None:
+        color = self.game.active_hat_color()
+        if not color:
+            return
+        hat_width = target_rect.width
+        hat_height = max(10, target_rect.height // 4)
+        top = target_rect.top + offset[1] - hat_height + 4
+        left = target_rect.left + offset[0]
+        brim_rect = pygame.Rect(left, top + hat_height - 6, hat_width, 6)
+        crown_rect = pygame.Rect(left + hat_width * 0.2, top, hat_width * 0.6, hat_height - 6)
+        pygame.draw.rect(surface, (*color, 220), brim_rect, border_radius=2)
+        pygame.draw.rect(surface, (*color, 220), crown_rect, border_radius=3)
 
     def _draw_spawn_effects(self, surface: pygame.Surface) -> None:
         if not self.spawn_beams:
@@ -9592,6 +10596,8 @@ class Game:
         # Load saved player color if present, otherwise use default
         default_color = (160, 220, 255)
         self.player_color = tuple(self.progress.player_color) if getattr(self.progress, "player_color", None) else default_color
+        self.skills = self.progress.skills.copy()
+        self.cosmetics = self.progress.cosmetics.copy()
         self.running = True
         self.speedrun_active = False
         self.speedrun_start = 0.0
@@ -9610,6 +10616,19 @@ class Game:
         self.scene.on_enter()
         # Short timestamp to ignore stray ESC events immediately after closing the console
         self._suppress_escape_until = 0.0
+
+    def active_outfit_color(self) -> Tuple[int, int, int]:
+        """Resolve the current outfit tint color."""
+        outfit = self.cosmetics.get("outfit", "Default") if hasattr(self, "cosmetics") else "Default"
+        return OUTFIT_COLORS.get(outfit, self.player_color)
+
+    def active_trail_color(self) -> Optional[Tuple[int, int, int]]:
+        trail = self.cosmetics.get("trail", "Default") if hasattr(self, "cosmetics") else "Default"
+        return TRAIL_COLORS.get(trail, None)
+
+    def active_hat_color(self) -> Optional[Tuple[int, int, int]]:
+        hat = self.cosmetics.get("hat", "Default") if hasattr(self, "cosmetics") else "Default"
+        return HAT_COLORS.get(hat, None)
 
     def change_scene(self, scene_cls: Callable[..., Scene], *args, **kwargs) -> None:
         self.scene.on_exit()
@@ -9659,9 +10678,11 @@ class Game:
         back_pressed = controller_state.back and not prev_controller_state.back
         pause_pressed = controller_state.pause and not prev_controller_state.pause
         shoot_pressed = controller_state.shoot and not prev_controller_state.shoot
+        shield_pressed = controller_state.shield and not prev_controller_state.shield
 
         current_scene = getattr(self, "scene", None)
         is_title = current_scene.__class__.__name__ == "TitleScene" if current_scene else False
+        is_boss_scene = current_scene.__class__.__name__ == "BossArenaScene" if current_scene else False
 
         if menu_up_pressed:
             pygame.event.post(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_UP))
@@ -9674,7 +10695,15 @@ class Game:
         if pause_pressed and not back_pressed and not is_title:
             pygame.event.post(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_ESCAPE))
         if shoot_pressed:
+            # Map controller shoot (X button) to keyboard F; if in boss scene, also flag last input device
             pygame.event.post(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_f))
+            if is_boss_scene:
+                self.last_input_device = "controller"
+        if shield_pressed:
+            # Map shield to a dedicated key event (use 'g' as shield key)
+            pygame.event.post(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_g))
+            if is_boss_scene:
+                self.last_input_device = "controller"
 
     def _poll_controller(self) -> None:
         prev = self.input_state
@@ -9693,6 +10722,8 @@ class Game:
         state.down = keys[key_map["down"]] or keys[pygame.K_DOWN]
         state.jump = keys[key_map["jump"]] or keys[pygame.K_w] or keys[pygame.K_UP]
         state.shoot = keys[key_map["shoot"]]
+        state.shield = keys[key_map.get("shield", pygame.K_LSHIFT)]
+        state.dash = keys[key_map.get("dash", pygame.K_e)]
         state.pause = keys[key_map["pause"]]
         state.accept = keys[key_map["accept"]]
         state.back = keys[key_map["back"]]
@@ -9712,8 +10743,17 @@ class Game:
             state.up = state.up or axis1 <= -0.35
             state.down = state.down or axis1 >= 0.35
 
-            state.jump = state.jump or joystick.get_button(controller_map["jump"])
-            state.shoot = state.shoot or joystick.get_button(controller_map["shoot"])
+            state.jump = state.jump or joystick.get_button(controller_map.get("jump", 0))
+            # Shooter uses X button (index 2) by default; also consider square/cross variants if mapped differently
+            shoot_button_index = controller_map.get("shoot", 2)
+            if joystick.get_numbuttons() > shoot_button_index:
+                state.shoot = state.shoot or joystick.get_button(shoot_button_index)
+            shield_button_index = controller_map.get("shield", 3)
+            if joystick.get_numbuttons() > shield_button_index:
+                state.shield = state.shield or joystick.get_button(shield_button_index)
+            dash_button_index = controller_map.get("dash", 5)
+            if joystick.get_numbuttons() > dash_button_index:
+                state.dash = state.dash or joystick.get_button(dash_button_index)
             
             c_state.pause = joystick.get_button(controller_map["pause"])
             c_state.accept = joystick.get_button(controller_map["accept"])
@@ -9732,6 +10772,8 @@ class Game:
 
         state.jump_pressed = state.jump and not prev.jump
         state.shoot_pressed = state.shoot and not prev.shoot
+        state.shield_pressed = state.shield and not prev.shield
+        state.dash_pressed = state.dash and not prev.dash
         state.pause_pressed = state.pause and not prev.pause
         state.accept_pressed = state.accept and not prev.accept
         state.back_pressed = state.back and not prev.back
