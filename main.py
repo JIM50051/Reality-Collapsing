@@ -1500,21 +1500,30 @@ class AssetCache:
         base_dir = ASSET_DIR / "bosses" / f"world{world}"
         if not base_dir.exists():
             return None
+        state_aliases: Dict[str, Tuple[str, ...]] = {
+            "attack1": ("attack", "attack1"),
+            "attack2": ("projectilecast", "attack2"),
+        }
         animations: Dict[str, List[pygame.Surface]] = {}
         for state in BOSS_ANIMATION_STATES:
             frames: List[pygame.Surface] = []
-            index = 1
-            while True:
-                path = base_dir / f"world{world}_boss_{state}_{index}.png"
-                if not path.exists():
+            for prefix in state_aliases.get(state, (state,)):
+                prefix_frames: List[pygame.Surface] = []
+                index = 1
+                while True:
+                    path = base_dir / f"world{world}_boss_{prefix}_{index}.png"
+                    if not path.exists():
+                        break
+                    try:
+                        frame = pygame.image.load(path).convert_alpha()
+                    except Exception as exc:
+                        print(f"[Assets] Failed to load boss frame {path}: {exc}")
+                        return None
+                    prefix_frames.append(frame)
+                    index += 1
+                if prefix_frames:
+                    frames = prefix_frames
                     break
-                try:
-                    frame = pygame.image.load(path).convert_alpha()
-                except Exception as exc:
-                    print(f"[Assets] Failed to load boss frame {path}: {exc}")
-                    return None
-                frames.append(frame)
-                index += 1
             animations[state] = frames
         if all(not frames for frames in animations.values()):
             return None
@@ -3692,9 +3701,12 @@ class Boss(pygame.sprite.Sprite):
         # Scale health upward by world and add a small global multiplier
         self.max_health = int(profile.max_health * (1.1 + 0.08 * (world - 1)))
         self.health = self.max_health
-        self._short_base_cd = profile.short_cooldown
-        self._long_base_cd = profile.long_cooldown
-        self.walk_speed = profile.ground_speed
+        self._short_base_cd_base = profile.short_cooldown
+        self._long_base_cd_base = profile.long_cooldown
+        self._base_walk_speed = profile.ground_speed
+        self._short_base_cd = self._short_base_cd_base
+        self._long_base_cd = self._long_base_cd_base
+        self.walk_speed = self._base_walk_speed
         self.walk_range = profile.patrol_range
         self.walk_direction = 1
         self.walk_enabled = self.walk_speed > 0
@@ -3706,12 +3718,16 @@ class Boss(pygame.sprite.Sprite):
             surf = pygame.Surface((18, 18), pygame.SRCALPHA)
             pygame.draw.circle(surf, (255, 200, 120), (9, 9), 9)
             pygame.draw.circle(surf, (255, 255, 255), (9, 9), 5)
-            self.projectile_surface = surf
+        self.projectile_surface = surf
         self.facing_direction = 1
         self.phase = 1
+        self.is_final_boss = self.world == 10
+        self.phase_transition_timer = 0.0
         self.enraged = False
+        self.super_enraged = False
 
         self.reset_anchor((center_x, center_y))
+        self._apply_phase_scalars()
         self.short_cooldown = random.uniform(max(0.3, self._short_base_cd * 0.3), self._short_base_cd)
         self.long_cooldown = random.uniform(max(0.6, self._long_base_cd * 0.4), self._long_base_cd)
         self._set_animation_state("idle", force=True)
@@ -3739,6 +3755,40 @@ class Boss(pygame.sprite.Sprite):
         if alive:
             self.walk_enabled = self.walk_speed > 0
         self._set_facing(1)
+
+    def _compute_phase(self) -> int:
+        health_ratio = self.health / max(1, self.max_health)
+        if self.is_final_boss:
+            if health_ratio < 0.33:
+                return 3
+            if health_ratio < 0.66:
+                return 2
+            return 1
+        return 2 if health_ratio < 0.5 else 1
+
+    def _apply_phase_scalars(self) -> None:
+        if self.is_final_boss:
+            speed_scale = {1: 1.0, 2: 1.12, 3: 1.28}.get(self.phase, 1.0)
+            short_scale = {1: 1.0, 2: 0.86, 3: 0.74}.get(self.phase, 1.0)
+            long_scale = {1: 1.0, 2: 0.9, 3: 0.78}.get(self.phase, 1.0)
+        else:
+            speed_scale = {1: 1.0, 2: 1.18}.get(self.phase, 1.0)
+            short_scale = {1: 1.0, 2: 0.85}.get(self.phase, 1.0)
+            long_scale = {1: 1.0, 2: 0.9}.get(self.phase, 1.0)
+        self.walk_speed = self._base_walk_speed * speed_scale
+        self._short_base_cd = self._short_base_cd_base * short_scale
+        self._long_base_cd = self._long_base_cd_base * long_scale
+        self.enraged = self.phase >= 2
+        self.super_enraged = self.is_final_boss and self.phase >= 3
+
+    def _start_phase_transition(self, new_phase: int) -> None:
+        self.phase = new_phase
+        self._apply_phase_scalars()
+        self.phase_transition_timer = 1.0 if self.is_final_boss else 0.8
+        self.walk_enabled = False
+        self._set_animation_state("attack2", speed=0.1, loop=False, hold=0.6, force=True)
+        self._reset_short_cooldown(max(0.7, self._short_base_cd))
+        self._reset_long_cooldown(max(1.2, self._long_base_cd))
 
     def _refresh_current_frame(self) -> None:
         frame = self._get_animation_frame(self._animation_state, self._anim_frame_index)
@@ -3845,25 +3895,17 @@ class Boss(pygame.sprite.Sprite):
     def update(self) -> None:
         dt = 1 / FPS
         if not self.defeated():
-            self._apply_ground_motion(dt)
-            # Phase/enrage scaling based on remaining health
-            health_ratio = self.health / max(1, self.max_health)
-            new_phase = 3 if health_ratio < 0.35 else 2 if health_ratio < 0.7 else 1
-            if new_phase != self.phase:
-                self.phase = new_phase
-                # Increase aggression on phase shifts
-                self._short_base_cd *= 0.85
-                self._long_base_cd *= 0.9
-                self.walk_speed *= 1.05
-                self._reset_short_cooldown()
-                self._reset_long_cooldown()
-            if not self.enraged and health_ratio < 0.4:
-                self.enraged = True
-                self.walk_speed *= 1.1
-                self._short_base_cd *= 0.8
-                self._long_base_cd *= 0.8
-                self._reset_short_cooldown()
-                self._reset_long_cooldown()
+            desired_phase = self._compute_phase()
+            if desired_phase != self.phase:
+                self._start_phase_transition(desired_phase)
+            if self.phase_transition_timer > 0.0:
+                self.phase_transition_timer = max(0.0, self.phase_transition_timer - dt)
+                if self.phase_transition_timer <= 0.0:
+                    self.walk_enabled = self.walk_speed > 0
+                self._update_motion_state("idle")
+                self.position.y = self._patrol_origin.y
+            else:
+                self._apply_ground_motion(dt)
         self.rect.centerx = int(self.position.x)
         self.rect.bottom = int(self.position.y)
         self._home = pygame.Vector2(self.position)
@@ -3874,7 +3916,7 @@ class Boss(pygame.sprite.Sprite):
         self._update_animation(dt)
 
     def perform_attacks(self, player: "Player", projectiles: pygame.sprite.Group) -> None:
-        if self.defeated():
+        if self.defeated() or self.phase_transition_timer > 0.0:
             return
         # Use long cooldown for heavy attacks, short for lighter spam
         if self.long_cooldown <= 0.0 and getattr(self, "stagger_timer", 0) <= 0:
@@ -3958,6 +4000,33 @@ class Boss(pygame.sprite.Sprite):
 
         return _update
 
+    @staticmethod
+    def _curve_update(turn_rate: float) -> Callable[[pygame.sprite.Sprite], None]:
+        def _update(self_projectile: pygame.sprite.Sprite) -> None:
+            self_projectile.velocity.rotate_ip(turn_rate)
+
+        return _update
+
+    def _homing_update(
+        self,
+        player: "Player",
+        turn_strength: float,
+        duration_frames: int,
+    ) -> Callable[[pygame.sprite.Sprite], None]:
+        def _update(self_projectile: pygame.sprite.Sprite) -> None:
+            if not hasattr(self_projectile, "homing_timer"):
+                self_projectile.homing_timer = duration_frames
+            if self_projectile.homing_timer <= 0:
+                return
+            self_projectile.homing_timer -= 1
+            desired = pygame.Vector2(player.rect.center) - self_projectile.pos
+            if desired.length_squared() == 0:
+                return
+            desired = desired.normalize() * self_projectile.velocity.length()
+            self_projectile.velocity = self_projectile.velocity.lerp(desired, turn_strength)
+
+        return _update
+
     def clear_attack_timers(self) -> None:
         """Convenience helper for resetting cooldowns once new patterns are added."""
         self.short_cooldown = 0.0
@@ -3972,7 +4041,7 @@ class Boss(pygame.sprite.Sprite):
         if direction.length_squared() == 0:
             direction = pygame.Vector2(self.walk_direction, -0.2)
         direction = direction.normalize()
-        speed = 6.0 + self.world * 0.45 + (0.8 if self.enraged else 0)
+        speed = 5.8 + self.world * 0.45 + (0.7 if self.enraged else 0) + (0.6 if self.super_enraged else 0)
         velocity = direction * speed
         # Fire a small spread based on world/phase
         spread_count = max(1, 1 + (self.world // 4) + max(0, self.phase - 1))
@@ -3982,29 +4051,41 @@ class Boss(pygame.sprite.Sprite):
             offset = (i - (spread_count - 1) / 2) * angle_step
             rad = math.radians(base_angle + offset)
             vel = pygame.Vector2(math.cos(rad), math.sin(rad)) * speed
+            extra_update = None
+            if self.phase >= 2:
+                turn_rate = random.uniform(-0.6, 0.6)
+                extra_update = self._curve_update(turn_rate)
             self._spawn_projectile(
                 self.projectile_surface,
                 (int(origin.x), int(origin.y)),
                 vel,
                 projectiles,
+                extra_update=extra_update,
             )
         self.short_cooldown = max(0.5, self._short_base_cd * 0.8)
-        if "attack1" in self.animations:
-            self._set_animation_state("attack1", force=True, hold=0.4)
+        if "attack2" in self.animations:
+            self._set_animation_state("attack2", force=True, hold=0.45)
 
     def _heavy_attack(self, player: "Player", projectiles: pygame.sprite.Group) -> None:
         """World-scaled heavy attack: mix of rain, dash, and volleys."""
-        choice_pool = []
-        choice_pool.append(self._volley_attack)
+        choice_pool = [self._volley_attack, self._arc_burst_attack]
+        if self.phase >= 2:
+            choice_pool.append(self._seeker_burst_attack)
         if self.world >= 3:
             choice_pool.append(self._rain_attack)
         if self.world >= 5:
             choice_pool.append(self._dash_attack)
+        if self.world >= 6:
+            choice_pool.append(self._curve_sweep_attack)
+        if self.world >= 8:
+            choice_pool.append(self._crossfire_attack)
+        if self.is_final_boss and self.phase >= 3:
+            choice_pool.append(self._spiral_attack)
         attack_fn = random.choice(choice_pool)
         attack_fn(player, projectiles)
         self._reset_long_cooldown()
         # Add a small short cooldown buffer so heavy attacks don't chain instantly
-        self.short_cooldown = max(self.short_cooldown, 0.6)
+        self.short_cooldown = max(self.short_cooldown, 0.55)
 
     def _volley_attack(self, player: "Player", projectiles: pygame.sprite.Group) -> None:
         """Fan volley that scales with world/phase."""
@@ -4012,8 +4093,10 @@ class Boss(pygame.sprite.Sprite):
         target = pygame.Vector2(player.rect.center)
         base_dir = (target - origin).normalize() if target != origin else pygame.Vector2(self.walk_direction, 0)
         volleys = max(2, 1 + (self.world // 3) + max(0, self.phase - 1))
+        if self.super_enraged:
+            volleys += 2
         angle_step = 8 + max(0, 3 - self.world // 2)
-        speed = 6.5 + self.world * 0.4 + (1.0 if self.enraged else 0)
+        speed = 6.5 + self.world * 0.4 + (1.0 if self.enraged else 0) + (0.8 if self.super_enraged else 0)
         base_angle = math.degrees(math.atan2(base_dir.y, base_dir.x))
         for i in range(volleys):
             offset = (i - (volleys - 1) / 2) * angle_step
@@ -4028,10 +4111,11 @@ class Boss(pygame.sprite.Sprite):
         columns = max(3, 2 + self.world // 3 + max(0, self.phase - 1))
         spacing = SCREEN_WIDTH // max(4, columns + 1)
         top_y = -40
-        speed = 5.0 + 0.5 * self.world
+        speed = 5.0 + 0.5 * self.world + (0.7 if self.enraged else 0)
         for i in range(columns):
             x = 40 + i * spacing + random.randint(-12, 12)
-            vel = pygame.Vector2(0, speed + random.uniform(-0.6, 0.6))
+            drift = random.uniform(-0.4, 0.4) if self.phase >= 2 else 0.0
+            vel = pygame.Vector2(drift, speed + random.uniform(-0.6, 0.6))
             self._spawn_projectile(self.projectile_surface, (x, top_y), vel, projectiles)
         self._reset_short_cooldown(1.2)
         if "attack2" in self.animations:
@@ -4048,12 +4132,105 @@ class Boss(pygame.sprite.Sprite):
         # Shockwave
         speed = 7.0 + self.world * 0.4
         shock_dir = pygame.Vector2(direction, 0)
-        for offset in (-1, 0, 1):
+        offsets = (-2, -1, 0, 1, 2) if self.phase >= 2 else (-1, 0, 1)
+        for offset in offsets:
             vel = pygame.Vector2(direction, 0.08 * offset) * speed
             origin = (self.rect.centerx, self.rect.centery - 20)
             self._spawn_projectile(self.projectile_surface, origin, vel, projectiles)
         self._set_animation_state("attack2", force=True, hold=0.35)
         self._reset_short_cooldown(0.8)
+
+    def _arc_burst_attack(self, player: "Player", projectiles: pygame.sprite.Group) -> None:
+        """Radial burst that pressures the arena."""
+        origin = pygame.Vector2(self.rect.centerx, self.rect.centery - self.rect.height * 0.25)
+        count = 8 + (self.world // 2) + (2 if self.phase >= 2 else 0) + (2 if self.super_enraged else 0)
+        speed = 4.8 + self.world * 0.35 + (0.6 if self.enraged else 0) + (0.6 if self.super_enraged else 0)
+        start_angle = random.uniform(0, 360)
+        for i in range(count):
+            angle = start_angle + (360 / count) * i
+            rad = math.radians(angle)
+            vel = pygame.Vector2(math.cos(rad), math.sin(rad)) * speed
+            self._spawn_projectile(self.projectile_surface, (int(origin.x), int(origin.y)), vel, projectiles)
+        if "attack1" in self.animations:
+            self._set_animation_state("attack1", force=True, hold=0.5)
+        self._reset_short_cooldown(0.9)
+
+    def _seeker_burst_attack(self, player: "Player", projectiles: pygame.sprite.Group) -> None:
+        """Burst that curves toward the player briefly."""
+        origin = pygame.Vector2(self.rect.centerx, self.rect.centery - self.rect.height * 0.3)
+        target = pygame.Vector2(player.rect.center)
+        base_dir = (target - origin).normalize() if target != origin else pygame.Vector2(self.walk_direction, 0)
+        count = 3 + max(0, self.phase - 1) + (1 if self.super_enraged else 0)
+        spread = 14
+        speed = 5.5 + self.world * 0.35 + (0.7 if self.enraged else 0)
+        base_angle = math.degrees(math.atan2(base_dir.y, base_dir.x))
+        for i in range(count):
+            offset = (i - (count - 1) / 2) * spread
+            rad = math.radians(base_angle + offset)
+            vel = pygame.Vector2(math.cos(rad), math.sin(rad)) * speed
+            extra_update = self._homing_update(player, 0.08, 36 + 8 * self.phase)
+            self._spawn_projectile(self.projectile_surface, (int(origin.x), int(origin.y)), vel, projectiles, extra_update=extra_update)
+        if "attack2" in self.animations:
+            self._set_animation_state("attack2", force=True, hold=0.55)
+
+    def _curve_sweep_attack(self, player: "Player", projectiles: pygame.sprite.Group) -> None:
+        """Sweeping arc of projectiles that curve away from the boss."""
+        direction = 1 if player.rect.centerx >= self.rect.centerx else -1
+        base_speed = 6.0 + self.world * 0.35 + (0.6 if self.enraged else 0)
+        origin = pygame.Vector2(self.rect.centerx, self.rect.centery - self.rect.height * 0.25)
+        lanes = 4 + (1 if self.phase >= 2 else 0)
+        for i in range(lanes):
+            offset = (i - (lanes - 1) / 2) * 0.18
+            vel = pygame.Vector2(direction, offset).normalize() * base_speed
+            turn_rate = (0.65 + 0.08 * i) * (-direction)
+            self._spawn_projectile(
+                self.projectile_surface,
+                (int(origin.x), int(origin.y)),
+                vel,
+                projectiles,
+                extra_update=self._curve_update(turn_rate),
+            )
+        if "attack1" in self.animations:
+            self._set_animation_state("attack1", force=True, hold=0.5)
+
+    def _crossfire_attack(self, player: "Player", projectiles: pygame.sprite.Group) -> None:
+        """Projectiles converge toward the player from both edges."""
+        base_speed = 6.0 + self.world * 0.32 + (0.6 if self.enraged else 0)
+        rows = 3 + (1 if self.phase >= 2 else 0)
+        for side in (-1, 1):
+            start_x = -30 if side < 0 else SCREEN_WIDTH + 30
+            for i in range(rows):
+                y_offset = (i - (rows - 1) / 2) * 36
+                origin = pygame.Vector2(start_x, player.rect.centery + y_offset)
+                direction = pygame.Vector2(player.rect.center) - origin
+                if direction.length_squared() == 0:
+                    direction = pygame.Vector2(-side, 0)
+                vel = direction.normalize() * base_speed
+                self._spawn_projectile(self.projectile_surface, (int(origin.x), int(origin.y)), vel, projectiles)
+        if "attack2" in self.animations:
+            self._set_animation_state("attack2", force=True, hold=0.6)
+
+    def _spiral_attack(self, player: "Player", projectiles: pygame.sprite.Group) -> None:
+        """Final boss phase burst with spiraling shots."""
+        origin = pygame.Vector2(self.rect.centerx, self.rect.centery - self.rect.height * 0.25)
+        count = 12 + self.world // 2
+        speed = 4.6 + self.world * 0.35 + (0.8 if self.super_enraged else 0)
+        start_angle = random.uniform(0, 360)
+        for i in range(count):
+            angle = start_angle + (360 / count) * i
+            rad = math.radians(angle)
+            vel = pygame.Vector2(math.cos(rad), math.sin(rad)) * speed
+            turn_rate = 1.05 if i % 2 == 0 else -1.05
+            self._spawn_projectile(
+                self.projectile_surface,
+                (int(origin.x), int(origin.y)),
+                vel,
+                projectiles,
+                extra_update=self._curve_update(turn_rate),
+            )
+        if "attack2" in self.animations:
+            self._set_animation_state("attack2", force=True, hold=0.7)
+        self._reset_short_cooldown(0.85)
 
 
 class Goal(pygame.sprite.Sprite):
