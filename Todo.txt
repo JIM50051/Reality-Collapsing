@@ -1,5 +1,5 @@
 Todo:
-make new textures - not started
+make new textures - finished
 reoganize main.py and delete any unused code (unused code will be shoved in a unused.py file) - not started
 add new character select menu (currently disabled) - in progress 
 generate all new boss assets and animations - done
@@ -37,3 +37,13 @@ start of code sections:
 5076 - start of level editor / tool box
 4764 - start of character selection screen
 4862 - form list and form sub menu
+
+
+Version 1.1 Update
+New Platform textures
+Credits scene effect was fixed
+Levels are now procedurally generated meaning no two levels are the same and change everytime a new game is started
+Level generation now uses high-entropy seeds each run; world 10 tower levels are longer
+New portal collapse finale cutscene after killing the world 10 boss and new boot intro cutscene before world 1-1
+Dev console and level editor removed (I might make a brand new Level Editor in the future)
+

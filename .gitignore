@@ -25,6 +25,5 @@ Thumbs.db
 
 #Hidden Files
 hidden/
-*.unused.py
 *.build_exe.bat
 

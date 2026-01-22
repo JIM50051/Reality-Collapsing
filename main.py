@@ -32,7 +32,6 @@ PLAYER_HEIGHT = 48
 
 BASE_DIR = Path(__file__).resolve().parent
 ASSET_DIR = BASE_DIR / "assets"
-LEVEL_DIR = ASSET_DIR / "levels"
 BACKGROUND_DIR = ASSET_DIR / "backgrounds"
 OBJECT_DIR = ASSET_DIR / "objects"
 PLATFORM_DIR = ASSET_DIR / "platforms"
@@ -327,12 +326,29 @@ def draw_glitch_text(surface, font, text, y, color, glitch_fx=False, *args, **kw
 
 
 def show_seizure_warning(screen, duration=3.5):
+    # Ensure controllers are initialised so gamepad input works here
+    try:
+        pygame.joystick.init()
+        for idx in range(pygame.joystick.get_count()):
+            try:
+                pygame.joystick.Joystick(idx).init()
+            except Exception:
+                pass
+    except Exception:
+        pass
+
     clock = pygame.time.Clock()
     font = pygame.font.SysFont(FONT_NAME, 48, bold=True)
     small_font = pygame.font.SysFont(FONT_NAME, 28)
     warning_text = "SEIZURE WARNING"
     info_text = "This game contains flashing lights and patterns that may trigger seizures."
-    continue_text = "Press any key to continue..."
+    last_input_device = "keyboard"
+    def continue_prompt():
+        if last_input_device == "controller":
+            return "Press A/Start to continue..."
+        if last_input_device == "mouse":
+            return "Click to continue..."
+        return "Press any key to continue..."
     start_time = pygame.time.get_ticks()
     shown_continue = False
     while True:
@@ -340,7 +356,7 @@ def show_seizure_warning(screen, duration=3.5):
         screen.fill((0, 0, 0))
         text_surface = font.render(warning_text, True, (255, 0, 0))
         info_surface = small_font.render(info_text, True, WHITE)
-        cont_surface = small_font.render(continue_text, True, WHITE)
+        cont_surface = small_font.render(continue_prompt(), True, WHITE)
         screen.blit(text_surface, (SCREEN_SIZE[0]//2 - text_surface.get_width()//2, SCREEN_SIZE[1]//2 - 100))
         screen.blit(info_surface, (SCREEN_SIZE[0]//2 - info_surface.get_width()//2, SCREEN_SIZE[1]//2))
         if shown_continue:
@@ -350,14 +366,33 @@ def show_seizure_warning(screen, duration=3.5):
             if event.type == pygame.QUIT:
                 pygame.quit()
                 sys.exit()
+            if event.type == pygame.KEYDOWN:
+                last_input_device = "keyboard"
+            elif event.type == pygame.MOUSEBUTTONDOWN:
+                last_input_device = "mouse"
+            elif event.type in (pygame.JOYBUTTONDOWN, pygame.JOYAXISMOTION, pygame.JOYHATMOTION):
+                last_input_device = "controller"
             # Allow keyboard, mouse, or controller buttons after the timer elapses
             if shown_continue and (
                 event.type == pygame.KEYDOWN
                 or event.type == pygame.MOUSEBUTTONDOWN
                 or event.type == pygame.JOYBUTTONDOWN
                 or (event.type == pygame.JOYAXISMOTION and abs(event.value) > 0.5)
+                or (event.type == pygame.JOYHATMOTION and event.value != (0, 0))
             ):
                 return
+        # Also accept left stick movement as input once continue is shown
+        if shown_continue:
+            try:
+                for idx in range(pygame.joystick.get_count()):
+                    js = pygame.joystick.Joystick(idx)
+                    # Typical left stick axes 0/1
+                    ax0 = js.get_axis(0)
+                    ax1 = js.get_axis(1)
+                    if abs(ax0) > 0.5 or abs(ax1) > 0.5:
+                        return
+            except Exception:
+                pass
         if not shown_continue and (pygame.time.get_ticks() - start_time) > duration * 1000:
             shown_continue = True
         clock.tick(60)
@@ -750,19 +785,7 @@ DEFAULT_SPAWN_THEME: Dict[str, Any] = {
     "highlight": (120, 80, 160),
 }
 
-DEV_CONSOLE_CODE = [
-    pygame.K_UP,
-    pygame.K_UP,
-    pygame.K_DOWN,
-    pygame.K_DOWN,
-    pygame.K_LEFT,
-    pygame.K_RIGHT,
-    pygame.K_LEFT,
-    pygame.K_RIGHT,
-    pygame.K_b,
-    pygame.K_a,
-    pygame.K_RETURN,
-]
+DEV_CONSOLE_CODE = [pygame.K_SLASH]
 
 PLAYER_SPAWN = (100, 450)
 
@@ -3101,9 +3124,13 @@ def create_enemy(x, y, world, speed=2, assets=None):
             self.image = pygame.Surface((30, 30))
             self.image.fill(ENEMY_COLORS[(world - 1) % len(ENEMY_COLORS)])
         self.rect = self.image.get_rect(topleft=(x, y))
-        self.speed = speed
+        # Ensure enemies always move: pick a non-zero speed with random direction
+        base_speed = max(2, abs(speed))
+        self.speed = base_speed if random.random() < 0.5 else -base_speed
 
     def update(self) -> None:
+        if self.speed == 0:
+            self.speed = 2
         self.rect.x += self.speed
         if self.rect.left < 0 or self.rect.right > SCREEN_WIDTH:
             self.speed *= -1
@@ -5482,14 +5509,10 @@ class LevelGenerator:
             if difficulty_override is not None
             else self._difficulty_for(world, level, mode)
         )
-        # Ensure every (world, level, variant) is unique by using a unique seed
-        # Add extra entropy to avoid accidental duplicates
-        unique_seed = (world * 10000 + level * 100 + variant * 13)
-        if seed is not None:
-            base_seed = seed
-        else:
-            base_seed = unique_seed
-        return self.generate_level(world, difficulty, mode=mode, variant=variant, seed=base_seed)
+        # Make runs feel fresh: if no seed provided, use high-entropy source (time_ns).
+        if seed is None:
+            seed = time.time_ns() ^ random.randrange(1, 1_000_000_000)
+        return self.generate_level(world, difficulty, mode=mode, variant=variant, seed=seed)
 
     def generate_level(
         self,
@@ -5500,7 +5523,7 @@ class LevelGenerator:
         variant: int = 0,
         seed: Optional[int] = None,
     ) -> LevelContent:
-        rng_seed = seed if seed is not None else self._derive_seed(world, int(difficulty * 1000), variant)
+        rng_seed = seed if seed is not None else time.time_ns()
         rng = random.Random(rng_seed)
         content = LevelContent()
         rule = self.WORLD_RULES.get(world, self.WORLD_RULES[0])
@@ -5514,6 +5537,7 @@ class LevelGenerator:
             self._place_goal(content, main_path[-1], world, rng, portal_type="boss", active=False)
         else:
             self._place_goal(content, main_path[-1], world, rng)
+        # Tower levels (every 10th) are longer: force extra sections and checkpoints
         self._place_checkpoints(content, main_path, difficulty, mode=mode)
         self._finalize_bounds(content)
         return content
@@ -5555,7 +5579,8 @@ class LevelGenerator:
 
         section_count = int(round(settings.section_count.lerp(difficulty)))
         if mode == "tower":
-            section_count = int(section_count * 1.4)
+            # Make 10th levels significantly longer
+            section_count = int(section_count * 1.9)
 
         start_width = max(width_max, 200)
         start_x = PLAYER_SPAWN[0] - start_width // 2
@@ -5832,12 +5857,15 @@ class LevelGenerator:
             0.75,
             self.settings.world_object_rate.lerp(difficulty) * rule.object_multiplier * (0.6 + 0.4 * progress),
         )
+        placed_hazard = False
         if rng.random() < object_rate:
             world_object = self._spawn_world_object(world, platform)
             if isinstance(world_object, Spike):
                 added = self._try_add_sprite(content, "spike", world_object, content.spikes)
+                placed_hazard = placed_hazard or added
             else:
                 added = self._try_add_sprite(content, "special", world_object, content.specials)
+                placed_hazard = placed_hazard or isinstance(world_object, Spike)
             # If we successfully placed a sprite on a moving platform, make it follow
             try:
                 if added and isinstance(platform, MovingPlatform):
@@ -5852,6 +5880,7 @@ class LevelGenerator:
         if (
             platform.rect.width >= min_platform_width
             and not isinstance(platform, (MovingPlatform, BlinkingPlatform))
+            and not placed_hazard
             and rng.random() < enemy_spawn_chance
         ):
             # Place enemy at random x on platform
@@ -6348,6 +6377,7 @@ class CreditsScene(Scene):
         self.glitch_level = 1
         self.frame_count = 0
         self.shards.clear()
+        self.exit_triggered = False
 
     def glitch_static(self, surf, amount=80):
         noise = pygame.Surface(surf.get_size(), pygame.SRCALPHA)
@@ -6544,7 +6574,14 @@ class CreditsScene(Scene):
             pfont = self.game.assets.font(28, True)
             prompt_surf = pygame.Surface((w, 50), pygame.SRCALPHA)
             prompt_surf.fill((0, 0, 0, 0))
-            draw_center_text(prompt_surf, pfont, "Press Enter to return to Title Screen", 25, WHITE)
+            device = getattr(self.game, "last_input_device", "keyboard")
+            if device == "controller":
+                prompt_text = "Press A/Start to return to Title Screen"
+            elif device == "mouse":
+                prompt_text = "Click to return to Title Screen"
+            else:
+                prompt_text = "Press Enter to return to Title Screen"
+            draw_center_text(prompt_surf, pfont, prompt_text, 25, WHITE)
             if getattr(self.game.settings, "__getitem__", None) and self.game.settings["glitch_fx"]:
                 self.glitch_scanlines(prompt_surf)
                 if random.random() < 0.5:
@@ -6556,11 +6593,25 @@ class CreditsScene(Scene):
 
     def handle_event(self, event):
         if self.done:
+            if getattr(self, "exit_triggered", False):
+                return
             if self.ending_mode:
                 if event.type == pygame.KEYDOWN and event.key == pygame.K_RETURN:
+                    self.exit_triggered = True
+                    self.game._suppress_accept_until = time.time() + 0.5
+                    self.game.change_scene(TitleScene)
+                elif event.type == pygame.JOYBUTTONDOWN:
+                    self.exit_triggered = True
+                    self.game._suppress_accept_until = time.time() + 0.5
                     self.game.change_scene(TitleScene)
             else:
                 if event.type == pygame.KEYDOWN:
+                    self.exit_triggered = True
+                    self.game._suppress_accept_until = time.time() + 0.5
+                    self.game.change_scene(TitleScene)
+                elif event.type == pygame.JOYBUTTONDOWN:
+                    self.exit_triggered = True
+                    self.game._suppress_accept_until = time.time() + 0.5
                     self.game.change_scene(TitleScene)
         elif not self.done and not self.ending_mode:
             if event.type == pygame.KEYDOWN:
@@ -6614,7 +6665,6 @@ class TitleScene(Scene):
                     self.continue_game,
                     enabled=lambda: SAVE_FILE.exists(),
                 ),
-                MenuEntry(lambda: " Jump to Final Boss (defeated)", self.teleport_final_boss_defeated),
                 MenuEntry(lambda: " View Credits", self.play_credits),
                 MenuEntry(lambda: " Settings", self.open_settings),
                 MenuEntry(lambda: " Quit", self.quit_game),
@@ -7183,33 +7233,10 @@ class GameplayScene(Scene):
     def _respawn_all_coins(self):
         """Respawn all coins to their original positions from the level file."""
         # Only run if not in editor or playtest
-        if hasattr(self, 'level_path') and hasattr(self, 'content'):
-            try:
-                with open(self.level_path, 'r') as f:
-                    lines = f.readlines()
-                for line in lines:
-                    if line.startswith('COINS:'):
-                        coins_str = line[len('COINS:'):].strip()
-                        coins = []
-                        for part in coins_str.split('),'):
-                            part = part.strip(' ,\n')
-                            if part:
-                                part = part.strip('()')
-                                if part:
-                                    xys = part.split(',')
-                                    if len(xys) == 2:
-                                        try:
-                                            x, y = int(xys[0]), int(xys[1])
-                                            coins.append((x, y))
-                                        except Exception:
-                                            pass
-                        # Remove all coins and re-add at original positions
-                        self.content.coins.empty()
-                        for x, y in coins:
-                            self.content.coins.add(Coin(x, y))
-                        break
-            except Exception as exc:
-                print(f"[Editor] Failed to respawn coins: {exc}")
+        path = getattr(self, 'level_path', None)
+        if not path or not hasattr(self, 'content'):
+            return
+        # Persistence removed; nothing to reload
     def handle_event(self, event: pygame.event.Event) -> None:
         # ...existing code...
         if hasattr(self, '_level_editor_enabled') and self._level_editor_enabled:
@@ -8957,6 +8984,7 @@ def play_portal_collapse_cutscene(game: "Game", portal_pos: Tuple[int, int], obj
 
     game.change_scene(CreditsScene, ending_mode=True)
 
+
 # ---------------------------------------------------------------------------
 # Game controller
 # ---------------------------------------------------------------------------
@@ -8986,7 +9014,7 @@ class LevelEditorScene(Scene):
         # Always use the world/level passed to the editor
         world = self.editor_world
         level = self.editor_level
-        self.level_path = LEVEL_DIR / f"world{world}_level{level}.lvl"
+        self.level_path = None  # No file persistence; purely procedural
         # 1. Generate the procedural level
         generator = self.game.level_generator
         procedural = generator.generate(world, level)
@@ -8998,111 +9026,10 @@ class LevelEditorScene(Scene):
         self.enemies = []
         self.spikes = []
         self._other_sections = {}
-        # 3. If a .lvl file exists, load and override procedural objects with saved edits
-        if self.level_path.exists():
-            with open(self.level_path, "r") as f:
-                for line in f:
-                    line = line.strip()
-                    if line.startswith("PLATFORMS:"):
-                        items = line[len("PLATFORMS:"):].split(")")
-                        self.platforms = []
-                        for item in items:
-                            item = item.strip(" ,(")
-                            if item:
-                                parts = item.split(",")
-                                if len(parts) >= 4:
-                                    x, y, w, h = map(int, parts[:4])
-                                    self.platforms.append(pygame.Rect(x, y, w, h))
-                    elif line.startswith("ENEMIES:"):
-                        items = line[len("ENEMIES:"):].split(")")
-                        self.enemies = []
-                        for item in items:
-                            item = item.strip(" ,(")
-                            if item:
-                                parts = item.split(",")
-                                if len(parts) >= 3:
-                                    x, y, t = map(int, parts[:3])
-                                    self.enemies.append((x, y, t))
-                    elif line.startswith("COINS:"):
-                        items = line[len("COINS:"):].split(")")
-                        self.coins = []
-                        for item in items:
-                            item = item.strip(" ,(")
-                            if item:
-                                parts = item.split(",")
-                                if len(parts) >= 2:
-                                    x, y = map(int, parts[:2])
-                                    self.coins.append((x, y))
-                    elif line.startswith("SPIKES:"):
-                        items = line[len("SPIKES:"):].split(")")
-                        self.spikes = []
-                        for item in items:
-                            item = item.strip(" ,(")
-                            if item:
-                                parts = item.split(",")
-                                if len(parts) >= 2:
-                                    x, y = map(int, parts[:2])
-                                    self.spikes.append((x, y))
-                    elif line.startswith("SPECIAL:"):
-                        items = line[len("SPECIAL:"):].split(")")
-                        self.specials = []
-                        for item in items:
-                            item = item.strip(" ,(")
-                            if item:
-                                parts = item.split(",")
-                                if len(parts) >= 2:
-                                    x, y = map(int, parts[:2])
-                                    self.specials.append((x, y))
-                    elif line.startswith("GOAL:"):
-                        item = line[len("GOAL:"):].strip()
-                        item = item.strip("(), ")
-                        if item:
-                            parts = [p for p in item.split(",") if p.strip()]
-                            if len(parts) >= 2:
-                                try:
-                                    x, y = int(parts[0]), int(parts[1])
-                                    self.goal = (x, y)
-                                except Exception:
-                                    pass
-                    else:
-                        # Preserve any other section
-                        if ":" in line:
-                            key = line.split(":", 1)[0]
-                            self._other_sections[key] = line
 
     def save_level(self):
-        # Save all objects to the .lvl file (overwrite, preserving all sections)
-        try:
-            # Ensure the directory exists
-            self.level_path.parent.mkdir(parents=True, exist_ok=True)
-            lines = []
-            # Write all known sections in the order: PLATFORMS, ENEMIES, COINS, SPIKES, SPECIAL, GOAL
-            if self.platforms:
-                lines.append("PLATFORMS:" + ",".join(f"({p.x},{p.y},{p.w},{p.h},1.0,False)" for p in self.platforms))
-            if self.enemies:
-                lines.append("ENEMIES:" + ",".join(f"({x},{y},{t})" for (x, y, t) in self.enemies))
-            if self.coins:
-                lines.append("COINS:" + ",".join(f"({x},{y})" for (x, y) in self.coins))
-            if self.spikes:
-                lines.append("SPIKES:" + ",".join(f"({x},{y})" for (x, y) in self.spikes))
-            if self.specials:
-                lines.append("SPECIAL:" + ",".join(f"({x},{y})" for (x, y) in self.specials))
-            if self.goal:
-                x, y = self.goal
-                lines.append(f"GOAL:({x},{y}),")
-            # Add any other preserved sections that are not already written
-            written_keys = {s.split(":", 1)[0] for s in lines}
-            for key, line in self._other_sections.items():
-                if key not in written_keys:
-                    lines.append(line)
-            with open(self.level_path, "w") as f:
-                for line in lines:
-                    f.write(line + "\n")
-            print(f"[Level Editor] Saved level to {self.level_path}")
-            # Reload the level file so in-memory objects match the file
-            self.load_current_level()
-        except Exception as exc:
-            print(f"[Level Editor] Failed to save level: {exc}")
+        # No-op: persistence removed; levels are fully procedural
+        print("[Level Editor] Save disabled (levels folder unused)")
 
     def handle_event(self, event):
         if event.type == pygame.KEYDOWN:
@@ -9374,7 +9301,8 @@ class Game:
         self.clock = pygame.time.Clock()
         self.assets = AssetCache()
         self.level_generator = LevelGenerator(self.assets)
-        self.dev_console = DevConsole(self)
+        # Dev console disabled
+        self.dev_console = None
         self.gamepads: List[pygame.joystick.Joystick] = []
         self.input_state = InputState()
         self.window_mode: str = "windowed"
@@ -9397,6 +9325,8 @@ class Game:
         self.current_music = None
         self._last_music = None
         self._prev_controller_state = InputState()
+        self.last_input_device: str = "keyboard"
+        self._suppress_accept_until = 0.0
 
         self._refresh_gamepads()
         self.scene = CreditScene(self)
@@ -9531,6 +9461,15 @@ class Game:
         self.input_state = state
         self._post_controller_events(prev_c_state, c_state)
         self._prev_controller_state = c_state
+        # Detect active controller input
+        if (
+            c_state.pause
+            or c_state.accept
+            or c_state.back
+            or abs(c_state.move_axis) > 0.35
+            or abs(c_state.vertical_axis) > 0.35
+        ):
+            self.last_input_device = "controller"
 
     def apply_window_mode(self, mode: Optional[str] = None) -> None:
         requested = str(mode if mode is not None else self.settings["window_mode"]).lower()
@@ -9591,6 +9530,16 @@ class Game:
                     if getattr(self, "_suppress_escape_until", 0.0) > time.time():
                         # drop this ESC event
                         continue
+                if event.type in (pygame.KEYDOWN, pygame.JOYBUTTONDOWN):
+                    # Suppress accept/back inputs right after scene changes
+                    if getattr(self, "_suppress_accept_until", 0.0) > time.time():
+                        continue
+                if event.type in (pygame.KEYDOWN, pygame.KEYUP):
+                    self.last_input_device = "keyboard"
+                elif event.type in (pygame.JOYBUTTONDOWN, pygame.JOYBUTTONUP, pygame.JOYAXISMOTION, pygame.JOYHATMOTION):
+                    self.last_input_device = "controller"
+                elif event.type in (pygame.MOUSEBUTTONDOWN, pygame.MOUSEBUTTONUP, pygame.MOUSEMOTION):
+                    self.last_input_device = "mouse"
                 if self.dev_console and self.dev_console.active:
                     self.dev_console.handle_event(event)
                 else:
