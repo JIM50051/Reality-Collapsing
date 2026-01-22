@@ -5213,6 +5213,7 @@ def run_pause_menu(scene: "GameplayScene") -> str:
     menu.panel_color = (20, 30, 55, 230)
     menu.panel_border_color = (200, 220, 255)
 
+    scene.game._in_pause_menu = True
     scene.game.pause_speedrun(True)
     # Do not clear flight cheat; gameplay will reapply if enabled
     if hasattr(scene, 'player') and hasattr(scene.player, 'disable_flight'):
@@ -5225,12 +5226,15 @@ def run_pause_menu(scene: "GameplayScene") -> str:
             if event.type == pygame.QUIT:
                 scene.game.quit()
                 scene.game.pause_speedrun(False)
+                scene.game._in_pause_menu = False
                 return "quit"
             result = menu.handle_event(event)
             if callable(result):
+                scene.game._in_pause_menu = False
                 return result()
             if result == "exit":
                 scene.game.pause_speedrun(False)
+                scene.game._in_pause_menu = False
                 return result_holder["value"]
 
         # Solid black background
@@ -8190,8 +8194,10 @@ class CosmeticsShopScene(Scene):
         if event.type == pygame.QUIT:
             self.game.quit()
         elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-            pause_scene = getattr(self.game, "_pause_return_scene", None)
+            pause_scene = getattr(self.game, "_pause_return_scene", None) or self.return_scene
             if pause_scene:
+                self.game._pause_menu_ignore_back_once = True
+                pygame.event.clear((pygame.KEYDOWN, pygame.KEYUP, pygame.JOYBUTTONDOWN, pygame.JOYBUTTONUP, pygame.JOYAXISMOTION, pygame.JOYHATMOTION))
                 action = run_pause_menu(pause_scene)
                 if action == "menu":
                     self.game.change_scene(TitleScene)
@@ -8200,7 +8206,8 @@ class CosmeticsShopScene(Scene):
                 elif action == "shops":
                     self.game.change_scene(ShopsHubScene, return_scene=pause_scene)
                 else:
-                    self.game.scene = pause_scene
+                    # Default: return to pause menu hub rather than resuming gameplay directly
+                    self.game.change_scene(ShopsHubScene, return_scene=pause_scene)
             else:
                 self.game.change_scene(TitleScene)
         else:
@@ -8275,16 +8282,19 @@ class CosmeticsShopScene(Scene):
                         self._buy_or_select(self.active_tab, name, cost)
                         self._ensure_selected_visible()
                 elif btn == 1:  # B -> exit
-                    if self.return_scene:
-                        action = run_pause_menu(self.return_scene)
+                    pause_scene = getattr(self.game, "_pause_return_scene", None) or self.return_scene
+                    if pause_scene:
+                        self.game._pause_menu_ignore_back_once = True
+                        pygame.event.clear((pygame.KEYDOWN, pygame.KEYUP, pygame.JOYBUTTONDOWN, pygame.JOYBUTTONUP, pygame.JOYAXISMOTION, pygame.JOYHATMOTION))
+                        action = run_pause_menu(pause_scene)
                         if action == "menu":
                             self.game.change_scene(TitleScene)
                         elif action == "quit":
                             self.game.quit()
                         elif action == "shops":
-                            self.game.change_scene(ShopsHubScene, return_scene=self.return_scene)
+                            self.game.change_scene(ShopsHubScene, return_scene=pause_scene)
                         else:
-                            self.game.scene = self.return_scene
+                            self.game.change_scene(ShopsHubScene, return_scene=pause_scene)
                     else:
                         self.game.change_scene(TitleScene)
             elif event.type == pygame.MOUSEWHEEL:
@@ -8441,14 +8451,15 @@ class SkillsShopScene(Scene):
                 result()
                 return
             if result == "exit":
-                if self.return_scene:
-                    action = run_pause_menu(self.return_scene)
+                pause_scene = getattr(self.game, "_pause_return_scene", None) or self.return_scene
+                if pause_scene:
+                    action = run_pause_menu(pause_scene)
                     if action == "menu":
                         self.game.change_scene(TitleScene)
                     elif action == "quit":
                         self.game.quit()
                     else:
-                        self.game.scene = self.return_scene
+                        self.game.scene = pause_scene
                 else:
                     self.game.change_scene(TitleScene)
 
@@ -11439,6 +11450,7 @@ class Game:
         self._prev_controller_state = InputState()
         self.last_input_device: str = "keyboard"
         self._suppress_accept_until = 0.0
+        self._pause_menu_ignore_back_once = False
 
         self._refresh_gamepads()
         self.scene = CreditScene(self)
@@ -11540,9 +11552,11 @@ class Game:
         is_title = current_scene.__class__.__name__ == "TitleScene" if current_scene else False
         is_boss_scene = current_scene.__class__.__name__ == "BossArenaScene" if current_scene else False
         is_cosmetics_shop = current_scene.__class__.__name__ == "CosmeticsShopScene" if current_scene else False
+        in_pause_menu = getattr(self, "_in_pause_menu", False)
 
-        # Avoid injecting synthetic key events for shops to prevent double-moves (hat + injected KEYDOWN)
-        if not is_cosmetics_shop:
+        # Avoid injecting synthetic key events for shops to prevent double-moves (hat + injected KEYDOWN),
+        # but allow it when a pause menu is actively open (so controller navigation still works there).
+        if not is_cosmetics_shop or in_pause_menu:
             if menu_up_pressed:
                 pygame.event.post(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_UP))
             if menu_down_pressed:
@@ -11550,7 +11564,10 @@ class Game:
             if accept_pressed:
                 pygame.event.post(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RETURN))
             if back_pressed and not is_title:
-                pygame.event.post(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_ESCAPE))
+                if getattr(self, "_pause_menu_ignore_back_once", False):
+                    self._pause_menu_ignore_back_once = False
+                else:
+                    pygame.event.post(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_ESCAPE))
             if pause_pressed and not back_pressed and not is_title:
                 pygame.event.post(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_ESCAPE))
         if shoot_pressed:
