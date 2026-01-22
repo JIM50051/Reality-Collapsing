@@ -1,5 +1,4 @@
 Todo:
-redo asset file paths - started
 make new textures - not started
 reoganize main.py and delete any unused code (unused code will be shoved in a unused.py file) - not started
 add new character select menu (currently disabled) - in progress 
