@@ -598,6 +598,34 @@ WORLD_SPECIALS: Dict[int, str] = {
     10: "glitch",
 }
 
+# Options for ambient/world-appropriate objects (will be chosen randomly per spawn)
+WORLD_THEME_OBJECTS: Dict[int, List[str]] = {
+    1: ["coin"],
+    2: ["rock", "coin"],
+    3: ["quicksand", "rock"],
+    4: ["spike", "coin"],
+    5: ["icicle", "coin"],
+    6: ["lava", "rock"],
+    7: ["wind", "coin"],
+    8: ["electric", "coin"],
+    9: ["ghost", "coin"],
+    10: ["glitch", "coin"],
+}
+
+# Portal lightning colors by world
+WORLD_PORTAL_COLORS: Dict[int, Tuple[int, int, int]] = {
+    1: (120, 220, 255),
+    2: (255, 180, 80),
+    3: (230, 200, 120),
+    4: (120, 200, 120),
+    5: (180, 220, 255),
+    6: (255, 120, 80),
+    7: (200, 220, 255),
+    8: (120, 255, 220),
+    9: (180, 140, 255),
+    10: (220, 120, 255),
+}
+
 SPECIAL_TOOL_LABELS: Dict[str, str] = {
     "coin": "Bonus Coin",
     "rock": "Falling Rock",
@@ -3163,7 +3191,18 @@ class Portal(pygame.sprite.Sprite):
         pulse = 1.0 + 0.08 * math.sin(self._anim_timer * 6.0)
         new_image = pygame.transform.rotozoom(self.base_image, angle, pulse)
         center = self.rect.center
-        self.image = new_image
+        # Add simple electricity arcs around the portal edge
+        electric = new_image.copy()
+        arc_surface = pygame.Surface(electric.get_size(), pygame.SRCALPHA)
+        for _ in range(4):
+            x1 = random.randint(0, arc_surface.get_width() - 1)
+            y1 = random.randint(0, arc_surface.get_height() - 1)
+            x2 = x1 + random.randint(-24, 24)
+            y2 = y1 + random.randint(-24, 24)
+            color = (180, 220, 255, random.randint(140, 220))
+            pygame.draw.line(arc_surface, color, (x1, y1), (x2, y2), width=2)
+        electric.blit(arc_surface, (0, 0), special_flags=pygame.BLEND_ADD)
+        self.image = electric
         self.rect = self.image.get_rect(center=center)
 
 
@@ -4399,7 +4438,8 @@ class LevelContent:
 
 
 def create_world_object(world: int, x: int, y: int) -> pygame.sprite.Sprite:
-    name = WORLD_SPECIALS.get(world, "coin")
+    options = WORLD_THEME_OBJECTS.get(world) or [WORLD_SPECIALS.get(world, "coin")]
+    name = random.choice(options)
     if name == "spike":
         return Spike(x, y)
     if name == "rock":
@@ -4578,10 +4618,9 @@ def run_pause_menu(scene: "GameplayScene") -> str:
     )
 
     scene.game.pause_speedrun(True)
-    # Disable flight cheat when pause menu is opened
+    # Do not clear flight cheat; gameplay will reapply if enabled
     if hasattr(scene, 'player') and hasattr(scene.player, 'disable_flight'):
         scene.player.disable_flight()
-    scene.game.flight_cheat_enabled = False
 
     while scene.game.running:
         # Poll controller so pause menu can be driven by gamepads
@@ -6600,7 +6639,7 @@ class CreditsScene(Scene):
                     self.exit_triggered = True
                     self.game._suppress_accept_until = time.time() + 0.5
                     self.game.change_scene(TitleScene)
-                elif event.type == pygame.JOYBUTTONDOWN:
+                elif event.type == pygame.JOYBUTTONDOWN and event.button in (0, 7):  # A or Start
                     self.exit_triggered = True
                     self.game._suppress_accept_until = time.time() + 0.5
                     self.game.change_scene(TitleScene)
@@ -6609,7 +6648,7 @@ class CreditsScene(Scene):
                     self.exit_triggered = True
                     self.game._suppress_accept_until = time.time() + 0.5
                     self.game.change_scene(TitleScene)
-                elif event.type == pygame.JOYBUTTONDOWN:
+                elif event.type == pygame.JOYBUTTONDOWN and event.button in (0, 7):  # A or Start
                     self.exit_triggered = True
                     self.game._suppress_accept_until = time.time() + 0.5
                     self.game.change_scene(TitleScene)
@@ -6636,6 +6675,9 @@ class TitleScene(Scene):
         pygame.K_a, pygame.K_b, pygame.K_RETURN
     ]
     _flight_progress = 0
+    # Controller flight code: up, down, up, down, A (d-pad + button)
+    _flight_code_controller = ["up", "down", "up", "down", "a"]
+    _flight_progress_controller = 0
     # Konami code: up up down down left right left right b a enter
     _konami_code = [
         pygame.K_UP, pygame.K_UP, pygame.K_DOWN, pygame.K_DOWN,
@@ -6819,6 +6861,42 @@ class TitleScene(Scene):
                     self._konami_progress = 1
                 else:
                     self._konami_progress = 0
+            # Flight cheat via keyboard sequence
+            if event.key == self._flight_code[self._flight_progress]:
+                self._flight_progress += 1
+                if self._flight_progress == len(self._flight_code):
+                    self._flight_progress = 0
+                    self.game.flight_cheat_enabled = True
+                    self.game.sound.play_event("menu_confirm")
+            else:
+                self._flight_progress = 1 if event.key == self._flight_code[0] else 0
+        # Controller flight code: use d-pad up/down and button A (assume button 0)
+        if event.type == pygame.JOYHATMOTION:
+            hat_dir = event.value  # (x, y)
+            token = None
+            if hat_dir == (0, 1):
+                token = "up"
+            elif hat_dir == (0, -1):
+                token = "down"
+            if token is not None:
+                if token == self._flight_code_controller[self._flight_progress_controller]:
+                    self._flight_progress_controller += 1
+                else:
+                    self._flight_progress_controller = 1 if token == self._flight_code_controller[0] else 0
+        elif event.type == pygame.JOYBUTTONDOWN:
+            btn_token = "a" if event.button == 0 else None
+            if btn_token is not None:
+                if btn_token == self._flight_code_controller[self._flight_progress_controller]:
+                    self._flight_progress_controller += 1
+                else:
+                    self._flight_progress_controller = 1 if btn_token == self._flight_code_controller[0] else 0
+        if self._flight_progress_controller == len(self._flight_code_controller):
+            self._flight_progress_controller = 0
+            self.game.flight_cheat_enabled = True
+            try:
+                self.game.sound.play_event("menu_confirm")
+            except Exception:
+                pass
         result = self.menu.handle_event(event)
         if result == "exit":
             self.game.quit()
@@ -9383,15 +9461,18 @@ class Game:
         pause_pressed = controller_state.pause and not prev_controller_state.pause
         shoot_pressed = controller_state.shoot and not prev_controller_state.shoot
 
+        current_scene = getattr(self, "scene", None)
+        is_title = current_scene.__class__.__name__ == "TitleScene" if current_scene else False
+
         if menu_up_pressed:
             pygame.event.post(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_UP))
         if menu_down_pressed:
             pygame.event.post(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_DOWN))
         if accept_pressed:
             pygame.event.post(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RETURN))
-        if back_pressed:
+        if back_pressed and not is_title:
             pygame.event.post(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_ESCAPE))
-        if pause_pressed and not back_pressed:
+        if pause_pressed and not back_pressed and not is_title:
             pygame.event.post(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_ESCAPE))
         if shoot_pressed:
             pygame.event.post(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_f))
