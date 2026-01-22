@@ -696,7 +696,7 @@ class AssetCache:
 
         base = self._platform_bases.get(world)
         if base is None:
-            path = PLATFORM_DIR / f"world{world}" / "platform.png"
+            path = PLATFORM_DIR / f"platform{world}.png"
             if path.exists():
                 try:
                     base = pygame.image.load(path).convert_alpha()
@@ -8769,7 +8769,7 @@ class LevelEditorScene(Scene):
         # Load assets if not already loaded
         # Always reload platform asset for the current world
         world = getattr(self.game, "world", 1)
-        platform_asset_path = PLATFORM_DIR / f'world{world}' / 'platform.png'
+        platform_asset_path = PLATFORM_DIR / f'platform{world}.png'
         try:
             self._platform_img = pygame.image.load(str(platform_asset_path)).convert_alpha()
         except Exception:

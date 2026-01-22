@@ -1,14 +1,15 @@
 Todo:
+redo asset file paths - started
 make new textures - not started
-reoganize main.py and delete any unused code (unused code will be shoved in a unused.py file)
-add new character select menu - in progress (currently disabled)
+reoganize main.py and delete any unused code (unused code will be shoved in a unused.py file) - not started
+add new character select menu (currently disabled) - in progress 
 generate all new boss assets and animations - done
 fix basic enemies not spawning - done
 fix towers not spawning verticle - not started
 generate tower sky textures for each world - not started
 change boss spawn animation to be unique per world - not started
 create brand new level editor system - not started
-impliment level editor into the level and add the /leveleditor command to the dev console - in progress (some of the code is written.)
+impliment level editor into the level and add the /leveleditor command to the dev console  (some of the code is written.) - in progress
 
 
 errors
