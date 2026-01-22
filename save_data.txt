@@ -1,1 +1,1 @@
-{"world": 1, "level": 0, "coins": 0, "player_color": [160, 220, 255], "speedrun_active": true, "speedrun_start": 1769053902.7788086, "speedrun_pause_accum": 8.667393922805786, "speedrun_paused": false}
+{"world": 1, "level": 5, "coins": 27, "player_color": [255, 84, 1], "speedrun_active": true, "speedrun_start": 1769056736.9211166, "speedrun_pause_accum": 16.63395881652832, "speedrun_paused": false}

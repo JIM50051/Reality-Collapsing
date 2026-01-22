@@ -97,7 +97,7 @@ class VerticalMenu:
         self.sound = kwargs.get("sound", None)
 
     def handle_event(self, event):
-        # Keyboard navigation only; ESC tries to resume if a resume/continue entry exists
+        # Keyboard navigation; ESC tries to resume if a resume/continue entry exists
         if event.type == pygame.KEYDOWN:
             if event.key in (pygame.K_w, pygame.K_UP):
                 self.selected = (self.selected - 1) % len(self.entries)
@@ -129,6 +129,26 @@ class VerticalMenu:
                         self.sound.play_event("menu_confirm")
                     return entry.action()
                 return None
+        # Mouse hover: update selected index to the item under the cursor
+        if event.type == pygame.MOUSEMOTION and hasattr(self, "_last_entry_rects"):
+            for idx, rect in enumerate(self._last_entry_rects):
+                if rect.collidepoint(event.pos):
+                    if idx != self.selected:
+                        self.selected = idx
+                        if self.sound:
+                            self.sound.play_event("menu_move")
+                    break
+        # Mouse click support
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 and hasattr(self, "_last_entry_rects"):
+            for idx, rect in enumerate(self._last_entry_rects):
+                if rect.collidepoint(event.pos):
+                    entry = self.entries[idx]
+                    if getattr(entry, "enabled", True):
+                        self.selected = idx
+                        if self.sound:
+                            self.sound.play_event("menu_confirm")
+                        return entry.action()
+                    break
         return None
 
     def draw(self, surface, assets=None, y=None, glitch_fx=False, return_rects=False):
@@ -4629,16 +4649,11 @@ def run_pause_menu(scene: "GameplayScene") -> str:
     while scene.game.running:
         # Poll controller so pause menu can be driven by gamepads
         scene.game._poll_controller()
-        mouse_clicked = False
-        mouse_pos = (0, 0)
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 scene.game.quit()
                 scene.game.pause_speedrun(False)
                 return "quit"
-            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                mouse_clicked = True
-                mouse_pos = event.pos
             result = menu.handle_event(event)
             if callable(result):
                 return result()
@@ -4665,18 +4680,9 @@ def run_pause_menu(scene: "GameplayScene") -> str:
 
         # Glitchy menu text if glitch_fx is enabled
         entry_rects = menu.draw(scene.game.screen, scene.game.assets, SCREEN_HEIGHT // 2 + 40, scene.game.settings["glitch_fx"], return_rects=True)
-
-        # Mouse interaction
-        if mouse_clicked:
-            for idx, rect in enumerate(entry_rects):
-                if rect.collidepoint(mouse_pos):
-                    menu.selected = idx
-                    result = menu.entries[idx].activate()
-                    if callable(result):
-                        return result()
-                    if result == "exit":
-                        scene.game.pause_speedrun(False)
-                        return result_holder["value"]
+        if scene.game.settings["glitch_fx"]:
+            # Add subtle scanlines and RGB split over the UI area to match glitch theme
+            _draw_glitch_overlay(scene.game.screen)
 
         # No info at the bottom
 
@@ -4724,6 +4730,8 @@ def play_first_entry_cutscene(game: "Game") -> None:
     New opening cutscene: diagnostics -> portal spin-up -> reality breach.
     Skippable via keyboard/mouse/controller after text appears.
     """
+    # Ensure no stale suppression blocks the prompt
+    game._suppress_accept_until = 0.0
     game.pause_speedrun(True)
     clock = game.clock
     try:
@@ -4740,15 +4748,16 @@ def play_first_entry_cutscene(game: "Game") -> None:
 
     beats = [
         ("Signal Found: Node W1", 0.0),
-        ("Stability: CRITICAL — Portal bootstrapping...", 1.4),
+        ("Stability: CRITICAL ??? Portal bootstrapping...", 1.4),
         ("Objective: Reach the tower core before collapse.", 2.8),
     ]
-    start = time.time()
+    start_time = time.time()
     duration = 7.5
     can_skip = False
+    last_device = game.last_input_device
 
     while game.running:
-        elapsed = time.time() - start
+        elapsed = time.time() - start_time
         if elapsed >= duration:
             break
 
@@ -4757,12 +4766,51 @@ def play_first_entry_cutscene(game: "Game") -> None:
                 game.quit()
                 game.pause_speedrun(False)
                 return
+            if event.type in (pygame.KEYDOWN, pygame.KEYUP):
+                last_device = "keyboard"
+                game.last_input_device = "keyboard"
+            elif event.type in (pygame.JOYBUTTONDOWN, pygame.JOYBUTTONUP, pygame.JOYAXISMOTION, pygame.JOYHATMOTION):
+                last_device = "controller"
+                game.last_input_device = "controller"
+            elif event.type in (pygame.MOUSEBUTTONDOWN, pygame.MOUSEBUTTONUP, pygame.MOUSEMOTION):
+                last_device = "mouse"
+                game.last_input_device = "mouse"
             if can_skip and (
                 event.type in (pygame.KEYDOWN, pygame.MOUSEBUTTONDOWN, pygame.JOYBUTTONDOWN)
                 or (event.type == pygame.JOYAXISMOTION and abs(event.value) > 0.5)
+                or (event.type == pygame.JOYHATMOTION and event.value != (0, 0))
             ):
                 elapsed = duration  # force exit after drawing once
                 break
+
+        # Fallback: if the event queue missed it, poll device states when skipping is allowed
+        if can_skip:
+            keys = pygame.key.get_pressed()
+            mouse_buttons = pygame.mouse.get_pressed(num_buttons=3)
+            controller_pressed = False
+            for js in game.gamepads:
+                try:
+                    if any(js.get_button(i) for i in range(js.get_numbuttons())):
+                        controller_pressed = True
+                        break
+                    if js.get_numhats() > 0:
+                        hx, hy = js.get_hat(0)
+                        if hx != 0 or hy != 0:
+                            controller_pressed = True
+                            break
+                    # Consider strong stick tilt as intent to continue
+                    if js.get_numaxes() >= 2:
+                        if abs(js.get_axis(0)) > 0.6 or abs(js.get_axis(1)) > 0.6:
+                            controller_pressed = True
+                            break
+                except Exception:
+                    continue
+            if (
+                any(keys)
+                or any(mouse_buttons)
+                or controller_pressed
+            ):
+                elapsed = duration
 
         # Base layer
         game.screen.blit(background, (0, 0))
@@ -4807,7 +4855,13 @@ def play_first_entry_cutscene(game: "Game") -> None:
         if elapsed > 1.0:
             can_skip = True
             hint_alpha = int((math.sin(time.time() * 4) * 0.5 + 0.5) * 180)
-            hint = hint_font.render("Press any button to continue", True, WHITE)
+            if last_device == "controller":
+                hint_text = "Press A/Start to continue"
+            elif last_device == "mouse":
+                hint_text = "Click to continue"
+            else:
+                hint_text = "Press Enter/Space to continue"
+            hint = hint_font.render(hint_text, True, WHITE)
             hint.set_alpha(hint_alpha)
             game.screen.blit(hint, hint.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT - 70)))
 
@@ -4822,8 +4876,6 @@ def play_first_entry_cutscene(game: "Game") -> None:
         clock.tick(FPS)
 
     game.pause_speedrun(False)
-
-
 def play_final_cutscene(game: "Game") -> None:
     game.pause_speedrun(True)
     # Use SoundManager for SFX
@@ -6206,10 +6258,26 @@ class CreditScene(Scene):
     def handle_event(self, event: pygame.event.Event) -> None:
         if event.type == pygame.QUIT:
             self.game.quit()
-        elif event.type == pygame.KEYDOWN and self.prompt_visible:
-            key_map = self.game.settings["key_map"]
-            accept_key = key_map.get("accept", pygame.K_RETURN)
-            if event.key in (accept_key, pygame.K_SPACE, pygame.K_ESCAPE):
+        if self.prompt_visible:
+            if event.type == pygame.KEYDOWN:
+                self.game.last_input_device = "keyboard"
+                key_map = self.game.settings["key_map"]
+                accept_key = key_map.get("accept", pygame.K_RETURN)
+                if event.key in (accept_key, pygame.K_SPACE, pygame.K_ESCAPE):
+                    self.game._suppress_accept_until = time.time() + 0.5
+                    self.game.change_scene(TitleScene)
+            elif event.type == pygame.MOUSEBUTTONDOWN:
+                self.game.last_input_device = "mouse"
+                self.game._suppress_accept_until = time.time() + 0.5
+                self.game.change_scene(TitleScene)
+            elif event.type == pygame.JOYBUTTONDOWN:
+                self.game.last_input_device = "controller"
+                if event.button in (0, 7):  # A or Start
+                    self.game._suppress_accept_until = time.time() + 0.5
+                    self.game.change_scene(TitleScene)
+            elif event.type == pygame.JOYAXISMOTION and abs(event.value) > 0.6:
+                self.game.last_input_device = "controller"
+                self.game._suppress_accept_until = time.time() + 0.5
                 self.game.change_scene(TitleScene)
 
     def update(self, dt: float) -> None:
@@ -6235,7 +6303,14 @@ class CreditScene(Scene):
         draw_center_text(surface, title_font, "James Griepentrog", SCREEN_HEIGHT // 2 + 60, WHITE)
 
         if self.prompt_visible:
-            draw_center_text(surface, prompt_font, "Press any key to continue", SCREEN_HEIGHT - 80, WHITE)
+            device = getattr(self.game, "last_input_device", "keyboard")
+            if device == "controller":
+                prompt = "Press A/Start to continue"
+            elif device == "mouse":
+                prompt = "Click to continue"
+            else:
+                prompt = "Press Enter/Space to continue"
+            draw_center_text(surface, prompt_font, prompt, SCREEN_HEIGHT - 80, WHITE)
 
 
 class CharacterCreationScene(Scene):
@@ -6244,10 +6319,12 @@ class CharacterCreationScene(Scene):
         # Only color wheel selection, no player select
         self.character_list = ["player"]
         self.selected_character_idx = 0
-        self.character_images = [pygame.Surface((80, 100), pygame.SRCALPHA)]
+        self.preview_image = self._load_preview_image()
+        self.preview_tinted: Optional[pygame.Surface] = None
+        self.preview_pos = (SCREEN_WIDTH // 2 - 240, SCREEN_HEIGHT // 2 - 40)
         self.selected_color = self.game.player_color
         self.wheel_surface = generate_color_wheel(COLOR_WHEEL_RADIUS)
-        wheel_center = (SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 - 40)
+        wheel_center = (SCREEN_WIDTH // 2 + 220, SCREEN_HEIGHT // 2 - 40)
         self.wheel_rect = self.wheel_surface.get_rect(center=wheel_center)
         self.selection_pos = self._pos_from_color(self.selected_color)
         self.confirm_rect = pygame.Rect(0, 0, 220, 56)
@@ -6257,9 +6334,12 @@ class CharacterCreationScene(Scene):
         self.back_rect = pygame.Rect(0, 0, 180, 48)
 
         # Setting button positions
-        self.confirm_rect.center = (SCREEN_WIDTH // 2 + 180, SCREEN_HEIGHT - 110)
-        self.back_rect.center = (SCREEN_WIDTH // 2 - 200, SCREEN_HEIGHT - 110)
+        self.confirm_rect.center = (SCREEN_WIDTH // 2 + 220, SCREEN_HEIGHT - 110)
+        self.back_rect.center = (SCREEN_WIDTH // 2 - 220, SCREEN_HEIGHT - 110)
         self.dragging = False
+        self.hover_confirm = False
+        self.hover_back = False
+        self._update_preview_tint()
 
     def _get_character_list(self):
         char_dir = Path("assets/characters")
@@ -6276,20 +6356,108 @@ class CharacterCreationScene(Scene):
             # Set default color for character if needed
             self.selected_color = self.game.player_color
             self.wheel_surface = generate_color_wheel(COLOR_WHEEL_RADIUS)
-            wheel_center = (SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 - 40)
+            wheel_center = (SCREEN_WIDTH // 2 + 220, SCREEN_HEIGHT // 2 - 40)
             self.wheel_rect = self.wheel_surface.get_rect(center=wheel_center)
             self.selection_pos = self._pos_from_color(self.selected_color)
-            self.confirm_rect.center = (SCREEN_WIDTH // 2 + 180, SCREEN_HEIGHT - 110)
-            self.back_rect.center = (SCREEN_WIDTH // 2 - 200, SCREEN_HEIGHT - 110)
+            self.confirm_rect.center = (SCREEN_WIDTH // 2 + 220, SCREEN_HEIGHT - 110)
+            self.back_rect.center = (SCREEN_WIDTH // 2 - 220, SCREEN_HEIGHT - 110)
             self.dragging = False
+            self._update_preview_tint()
 
+    def _load_preview_image(self) -> pygame.Surface:
+        # Try to load the idle pose for the player; fall back to a simple silhouette
+        default = pygame.Surface((120, 140), pygame.SRCALPHA)
+        base_rect = default.get_rect()
+        pygame.draw.rect(default, (200, 200, 220, 60), base_rect, border_radius=12)
+        pygame.draw.rect(default, (200, 200, 220, 180), base_rect.inflate(-12, -12), border_radius=12)
+        try:
+            path = ASSET_DIR / "characters" / "player" / "idle_0.png"
+            if path.exists():
+                img = pygame.image.load(str(path)).convert_alpha()
+                return pygame.transform.smoothscale(img, (120, 140))
+        except Exception as exc:
+            print(f"[CharacterCreation] Failed to load preview: {exc}")
+        return default
 
+    def _tint_surface(self, surface: pygame.Surface, color: Tuple[int, int, int]) -> pygame.Surface:
+        tinted = surface.copy()
+        tint = pygame.Surface(surface.get_size(), pygame.SRCALPHA)
+        tint.fill((*color, 0))
+        tinted.blit(tint, (0, 0), special_flags=pygame.BLEND_MULT)
+        return tinted
+
+    def _update_preview_tint(self) -> None:
+        self.preview_tinted = self._tint_surface(self.preview_image, self.selected_color)
+
+    def handle_event(self, event: pygame.event.Event) -> None:
+        if event.type == pygame.QUIT:
+            self.game.quit()
+            return
+
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            if self._update_selection(event.pos):
+                self.dragging = True
+                self._update_preview_tint()
+            elif self.confirm_rect.collidepoint(event.pos):
+                self._finalize_selection()
+            elif self.back_rect.collidepoint(event.pos):
+                self.game.change_scene(TitleScene)
+        elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+            self.dragging = False
+        elif event.type == pygame.MOUSEMOTION and self.dragging:
+            if self._update_selection(event.pos):
+                self._update_preview_tint()
+
+        if event.type == pygame.KEYDOWN:
+            if event.key in (pygame.K_RETURN, pygame.K_SPACE):
+                self._finalize_selection()
+            elif event.key in (pygame.K_ESCAPE, pygame.K_BACKSPACE):
+                self.game.change_scene(TitleScene)
+            elif event.key in (pygame.K_LEFT, pygame.K_a):
+                self._nudge_selection(-0.06, 0.0)
+            elif event.key in (pygame.K_RIGHT, pygame.K_d):
+                self._nudge_selection(0.06, 0.0)
+            elif event.key in (pygame.K_UP, pygame.K_w):
+                self._nudge_selection(0.0, -0.05)
+            elif event.key in (pygame.K_DOWN, pygame.K_s):
+                self._nudge_selection(0.0, 0.05)
+
+        if event.type == pygame.JOYBUTTONDOWN:
+            if event.button in (0, 7):  # A or Start
+                self._finalize_selection()
+            elif event.button in (1, 2, 6):  # B / X / Back -> leave
+                self.game.change_scene(TitleScene)
+        if event.type == pygame.JOYAXISMOTION and event.axis in (0, 1):
+            # Use left stick to orbit the wheel
+            if not hasattr(self, "_axis_state"):
+                self._axis_state = {0: 0.0, 1: 0.0}
+            self._axis_state[event.axis] = event.value
+            x = self._axis_state.get(0, 0.0)
+            y = self._axis_state.get(1, 0.0)
+            if abs(x) > 0.15 or abs(y) > 0.15:
+                # Slow stick orbiting for finer control
+                self._nudge_selection(x * 0.06, y * 0.06)
+
+    def _nudge_selection(self, dx: float, dy: float) -> None:
+        # Adjust hue with dx and saturation with dy
+        r, g, b = [c / 255.0 for c in self.selected_color]
+        h, s, v = colorsys.rgb_to_hsv(r, g, b)
+        h = (h + dx) % 1.0
+        s = min(1.0, max(0.0, s - dy))
+        r2, g2, b2 = colorsys.hsv_to_rgb(h, s, v)
+        self.selected_color = (int(r2 * 255), int(g2 * 255), int(b2 * 255))
+        self.selection_pos = self._pos_from_color(self.selected_color)
+        self._update_preview_tint()
 
     def update(self, dt: float) -> None:  # noqa: ARG002
-        pass
+        # Update hover states for mouse-driven highlighting
+        mouse_pos = pygame.mouse.get_pos()
+        self.hover_confirm = self.confirm_rect.collidepoint(mouse_pos)
+        self.hover_back = self.back_rect.collidepoint(mouse_pos)
 
     def draw(self, surface: pygame.Surface) -> None:
         surface.fill((14, 14, 30))
+
         title_font = self.game.assets.font(48, True)
         # Only show color wheel UI before entering the level
         draw_glitch_text(
@@ -6300,12 +6468,35 @@ class CharacterCreationScene(Scene):
             WHITE,
             self.game.settings["glitch_fx"],
         )
+        # Preview frame on the left
+        preview_frame = pygame.Rect(0, 0, 220, 260)
+        preview_frame.center = self.preview_pos
+        pygame.draw.rect(surface, (30, 30, 60), preview_frame, border_radius=16)
+        pygame.draw.rect(surface, (120, 140, 220), preview_frame, 3, border_radius=16)
+        if self.preview_tinted:
+            img_rect = self.preview_tinted.get_rect(center=self.preview_pos)
+            surface.blit(self.preview_tinted, img_rect)
+
         if self.wheel_surface and self.wheel_rect:
             surface.blit(self.wheel_surface, self.wheel_rect)
+            # Selection indicator
+            if self.selection_pos:
+                pygame.draw.circle(surface, WHITE, self.selection_pos, 6, 2)
 
         # Draw confirm and back buttons using the new method
-        self._draw_button(surface, self.confirm_rect, "Confirm", False)
-        self._draw_button(surface, self.back_rect, "Back", False)
+        self._draw_button(surface, self.confirm_rect, "Confirm", self.hover_confirm)
+        self._draw_button(surface, self.back_rect, "Back", self.hover_back)
+
+        # Controls hint
+        hint_font = self.game.assets.font(20, False)
+        device = getattr(self.game, "last_input_device", "keyboard")
+        if device == "controller":
+            hint = "Move left stick / dpad to orbit | A to confirm | B to cancel"
+        elif device == "mouse":
+            hint = "Click/drag the wheel | Click Confirm or Back"
+        else:
+            hint = "Arrow keys to orbit | Enter to confirm | Esc to cancel"
+        draw_center_text(surface, hint_font, hint, SCREEN_HEIGHT - 50, (170, 170, 200))
 
     # Drawing the button (appearance)
     def _draw_button(self, surface: pygame.Surface, rect: pygame.Rect, label: str, highlighted: bool) -> None:
@@ -6760,9 +6951,8 @@ class TitleScene(Scene):
         game.sound.play_event("menu_confirm")
         game.world1_intro_shown = False
         game.progress.reset()
-        game.start_speedrun()
-        from main import GameplayScene
-        game.change_scene(GameplayScene, world=1, level=1)
+        from main import CharacterCreationScene
+        game.change_scene(CharacterCreationScene)
 
     def _show_confirm_new_game_popup(self) -> None:
         # Draw the main menu in the background, then overlay a centered popup
@@ -6984,6 +7174,7 @@ class TitleScene(Scene):
         logo_bottom = self.logo_rect.bottom if self.logo_rect else (SCREEN_HEIGHT // 2 - 120 + 80)
         menu_y = logo_bottom + 20  # Move buttons up by reducing the offset
         t = self.bg_anim_time
+        entry_rects: List[pygame.Rect] = []
         for idx, entry in enumerate(self.menu.entries):
             is_selected = (self.menu.selected == idx)
             font = self.game.assets.font(36 if is_selected else 28, True)
@@ -6998,7 +7189,14 @@ class TitleScene(Scene):
                     random.randint(100, 255),
                     random.randint(200, 255),
                 )
-            draw_center_text(surface, font, text, y, color)
+            render = font.render(text, True, color)
+            rect = render.get_rect(center=(SCREEN_WIDTH // 2, y))
+            surface.blit(render, rect)
+            # Store hit-rects so the menu can react to mouse hover/click like settings menu
+            padded = rect.inflate(32, 18)
+            entry_rects.append(padded)
+        # Update cached rects for mouse input
+        self.menu._last_entry_rects = entry_rects
 
         # Subtle bottom info (well below logo)
         info_font = self.game.assets.font(18, False)
@@ -7847,9 +8045,6 @@ class GameplayScene(Scene):
             30,
             WHITE,
         )
-
-        if self.world == 1 and self.level == 1:
-            self._draw_tutorial_overlay(surface)
 
         if self.world == 10 and self.game.settings["glitch_fx"]:
             if not self.glitch_active and random.random() < 0.01:
