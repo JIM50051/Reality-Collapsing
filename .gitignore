@@ -26,4 +26,4 @@ Thumbs.db
 # Hidden Files
 hidden/
 *.build_exe.bat
-
+*.Todo.txt
