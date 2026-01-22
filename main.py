@@ -7669,7 +7669,7 @@ class CosmeticsShopScene(Scene):
         current = self.game.assets.font(22, False)
         draw_center_text(surface, current, f"Outfit: {self.game.cosmetics.get('outfit', 'Default')}", 165, (200, 220, 255))
         draw_center_text(surface, current, f"Trail: {self.game.cosmetics.get('trail', 'Default')}", 195, (200, 220, 255))
-        draw_center_text(surface, self.game.assets.font(18, False), "More outfit textures coming soon.", 225, (180, 200, 220))
+        draw_center_text(surface, self.game.assets.font(18, False), "New outfit textures coming soon.", 225, (180, 200, 220))
         # Draw menu higher with extra spacing by faking a taller y anchor
         self.menu.draw(surface, self.game.assets, SCREEN_HEIGHT // 2 - 80, self.game.settings["glitch_fx"])
 
@@ -7757,7 +7757,7 @@ class HatShopScene(Scene):
         draw_center_text(surface, info_font, f"Coins: {coins}", 130, (255, 223, 70))
         current = self.game.assets.font(22, False)
         draw_center_text(surface, current, f"Hat: {self.game.cosmetics.get('hat', 'Default')}", 165, (200, 220, 255))
-        draw_center_text(surface, self.game.assets.font(18, False), "More hat textures coming soon.", 195, (180, 200, 220))
+        draw_center_text(surface, self.game.assets.font(18, False), "New hat textures coming soon.", 195, (180, 200, 220))
         self.menu.draw(surface, self.game.assets, SCREEN_HEIGHT // 2 - 60, self.game.settings["glitch_fx"])
 
 
