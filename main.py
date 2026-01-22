@@ -7122,6 +7122,22 @@ class GameplayScene(Scene):
                 print("[DEBUG] Failsafe: Enabling flight in update() because cheat is active.")
                 if hasattr(self.player, "enable_flight"):
                     self.player.enable_flight()
+        # Handle portal opening delay before scene transition
+        if getattr(self, "portal_opening", False):
+            if self.content.goal:
+                self.content.goal.opening = True
+            if hasattr(self, "player"):
+                if hasattr(self.player, "velocity"):
+                    self.player.velocity.x = 0
+                    self.player.velocity.y = 0
+            self.portal_timer -= dt
+            if self.portal_timer <= 0:
+                self.portal_opening = False
+                action = self._pending_portal_action
+                self._pending_portal_action = None
+                if callable(action):
+                    action()
+                return
         # ...existing code...
     def enable_level_editing(self):
         if hasattr(self, '_level_editor_enabled') and self._level_editor_enabled:
@@ -7411,6 +7427,9 @@ class GameplayScene(Scene):
         if self.content.goal is None:
             self.content.goal = Goal(700, 520, self.world, self.game.assets)
         self.is_tower = self.level % 10 == 0
+        self.portal_opening = False
+        self.portal_timer = 0.0
+        self._pending_portal_action = None
         spawn_point = self._compute_spawn_point()
         # Use selected character if set, else fallback to settings or default
         character_name = getattr(self.game, "selected_character", None)
@@ -7726,11 +7745,17 @@ class GameplayScene(Scene):
 
         goal = self.content.goal
         if goal and self.player.rect.colliderect(goal.rect):
-            sound.play_event("portal_enter")
-            if goal.portal_type == "boss":
-                self.game.change_scene(BossArenaScene, world=self.world, level=self.level)
+            if not getattr(self, "portal_opening", False):
+                sound.play_event("portal_enter")
+                self.portal_opening = True
+                self.portal_timer = 0.65
+                if goal.portal_type == "boss":
+                    self._pending_portal_action = lambda: self.game.change_scene(BossArenaScene, world=self.world, level=self.level)
+                else:
+                    self._pending_portal_action = lambda: self._advance_level()
+                if goal:
+                    goal.opening = True
                 return
-            self._advance_level()
 
         if self.is_tower and self.tower_timer > 0:
             self.tower_timer -= dt
