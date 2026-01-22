@@ -36,6 +36,7 @@ ASSET_DIR = BASE_DIR / "assets"
 BACKGROUND_DIR = ASSET_DIR / "backgrounds"
 OBJECT_DIR = ASSET_DIR / "objects"
 PLATFORM_DIR = ASSET_DIR / "platforms"
+HAT_DIR = ASSET_DIR / "hats"
 SOUND_DIR = ASSET_DIR / "sounds"
 MUSIC_DIR = ASSET_DIR / "music"
 SAVE_FILE = BASE_DIR / "save_data.txt"
@@ -1076,6 +1077,8 @@ class AssetCache:
         self._boss_projectiles: Dict[int, pygame.Surface] = {}
         self._boss_animation_frames: Dict[int, Dict[str, List[pygame.Surface]]] = {}
         self._portal_textures: Dict[Tuple[int, str], pygame.Surface] = {}
+        self._hat_textures: Dict[str, pygame.Surface] = {}
+        self._hat_scaled: Dict[Tuple[str, Tuple[int, int]], pygame.Surface] = {}
         self._title_logo_frames: Optional[List[pygame.Surface]] = None
         self._title_logo_durations: Optional[List[float]] = None
         self._title_logo_static: Optional[pygame.Surface] = None
@@ -1368,6 +1371,29 @@ class AssetCache:
             self._portal_textures[key] = base
 
         return self._portal_textures[key].copy()
+
+    def hat_texture(self, hat: str, size: Tuple[int, int]) -> Optional[pygame.Surface]:
+        key = (hat, size)
+        if key in self._hat_scaled:
+            return self._hat_scaled[key].copy()
+
+        base = self._hat_textures.get(hat)
+        if base is None:
+            path = HAT_DIR / f"{hat}.png"
+            if path.exists():
+                try:
+                    base = pygame.image.load(path).convert_alpha()
+                except Exception as exc:
+                    print(f"[Assets] Failed to load hat {path}: {exc}")
+                    base = None
+            self._hat_textures[hat] = base
+
+        if base is None:
+            return None
+
+        scaled = pygame.transform.smoothscale(base, size)
+        self._hat_scaled[key] = scaled
+        return scaled.copy()
 
     def _ensure_title_logo_assets(self) -> None:
         target_width = 420
@@ -7716,7 +7742,7 @@ class CosmeticsShopScene(Scene):
         current = self.game.assets.font(22, False)
         draw_center_text(surface, current, f"Outfit: {self.game.cosmetics.get('outfit', 'Default')}", 165, (200, 220, 255))
         draw_center_text(surface, current, f"Trail: {self.game.cosmetics.get('trail', 'Default')}", 195, (200, 220, 255))
-        draw_center_text(surface, self.game.assets.font(18, False), "New outfit textures coming soon.", 225, (180, 200, 220))
+        draw_center_text(surface, self.game.assets.font(18, False), "Outfit textures installed.", 225, (180, 200, 220))
         # Draw menu higher with extra spacing by faking a taller y anchor
         self.menu.draw(surface, self.game.assets, SCREEN_HEIGHT // 2 - 80, self.game.settings["glitch_fx"])
 
@@ -8256,7 +8282,17 @@ class GameplayScene(Scene):
         # Load character from settings
         settings_mgr = SettingsManager(SETTINGS_FILE)
         character_name = settings_mgr.data.get("character", "player")
-        scene.player = Player(spawn, game.sound, color=game.active_outfit_color(), character_name=character_name)
+        outfit_form = game.active_outfit_form()
+        player_color = game.active_outfit_color()
+        if outfit_form:
+            player_color = None
+        scene.player = Player(
+            spawn,
+            game.sound,
+            color=player_color,
+            character_name=character_name,
+            form_name=outfit_form,
+        )
         scene._apply_player_skills()
         scene.trail_color = game.active_trail_color()
         scene._player_trail = []
@@ -8291,7 +8327,19 @@ class GameplayScene(Scene):
             character_name = settings_mgr.data.get("character", "player")
         if not form_name:
             form_name = None
-        self.player = Player(spawn_point, self.game.sound, color=self.game.active_outfit_color(), character_name=character_name, form_name=form_name)
+        outfit_form = self.game.active_outfit_form()
+        if form_name is None:
+            form_name = outfit_form
+        player_color = self.game.active_outfit_color()
+        if form_name == outfit_form and outfit_form:
+            player_color = None
+        self.player = Player(
+            spawn_point,
+            self.game.sound,
+            color=player_color,
+            character_name=character_name,
+            form_name=form_name,
+        )
         self._apply_player_skills()
         self.trail_color = self.game.active_trail_color()
         self._player_trail: List[Dict[str, Any]] = []
@@ -8567,13 +8615,19 @@ class GameplayScene(Scene):
             pygame.draw.circle(surface, (*base, alpha), (int(t["pos"].x - self.camera_x), int(t["pos"].y - self.camera_y)), r)
 
     def _draw_hat(self, surface: pygame.Surface, target_rect: pygame.Rect, offset: Tuple[int, int] = (0, 0)) -> None:
+        hat_name = self.game.cosmetics.get("hat", "Default")
         color = self.game.active_hat_color()
-        if not color:
-            return
         hat_width = int(target_rect.width * 0.9)
         hat_height = max(10, target_rect.height // 3)
         top = target_rect.top + offset[1] - hat_height + 6
         left = target_rect.left + offset[0] + (target_rect.width - hat_width) // 2
+        if hat_width > 0 and hat_height > 0:
+            hat_img = self.game.assets.hat_texture(hat_name, (hat_width, hat_height))
+            if hat_img is not None:
+                surface.blit(hat_img, (left, top))
+                return
+        if not color:
+            return
         brim_height = max(4, hat_height // 5)
         brim_rect = pygame.Rect(left - 6, top + hat_height - brim_height, hat_width + 12, brim_height)
         crown_rect = pygame.Rect(left, top, hat_width, hat_height - brim_height)
@@ -9029,7 +9083,17 @@ class BossArenaScene(Scene):
         spawn = (ground.rect.centerx - PLAYER_WIDTH // 2, ground.rect.top - PLAYER_HEIGHT)
         settings_mgr = SettingsManager(SETTINGS_FILE)
         character_name = settings_mgr.data.get("character", "player")
-        self.player = Player(spawn, self.game.sound, color=self.game.active_outfit_color(), character_name=character_name)
+        outfit_form = self.game.active_outfit_form()
+        player_color = self.game.active_outfit_color()
+        if outfit_form:
+            player_color = None
+        self.player = Player(
+            spawn,
+            self.game.sound,
+            color=player_color,
+            character_name=character_name,
+            form_name=outfit_form,
+        )
         self.player.spawn = pygame.Vector2(spawn)
         self.player.respawn()
         self.player.skills = getattr(self.game, "skills", {})
@@ -9691,13 +9755,19 @@ class BossArenaScene(Scene):
             pygame.draw.circle(surface, (*base, alpha), (int(t["pos"].x), int(t["pos"].y)), r)
 
     def _draw_hat(self, surface: pygame.Surface, target_rect: pygame.Rect, offset: Tuple[int, int] = (0, 0)) -> None:
+        hat_name = self.game.cosmetics.get("hat", "Default")
         color = self.game.active_hat_color()
-        if not color:
-            return
         hat_width = target_rect.width
         hat_height = max(10, target_rect.height // 4)
         top = target_rect.top + offset[1] - hat_height + 4
         left = target_rect.left + offset[0]
+        if hat_width > 0 and hat_height > 0:
+            hat_img = self.game.assets.hat_texture(hat_name, (hat_width, hat_height))
+            if hat_img is not None:
+                surface.blit(hat_img, (left, top))
+                return
+        if not color:
+            return
         brim_rect = pygame.Rect(left, top + hat_height - 6, hat_width, 6)
         crown_rect = pygame.Rect(left + hat_width * 0.2, top, hat_width * 0.6, hat_height - 6)
         pygame.draw.rect(surface, (*color, 220), brim_rect, border_radius=2)
@@ -10669,6 +10739,14 @@ class Game:
         """Resolve the current outfit tint color."""
         outfit = self.cosmetics.get("outfit", "Default") if hasattr(self, "cosmetics") else "Default"
         return OUTFIT_COLORS.get(outfit, self.player_color)
+
+    def active_outfit_form(self) -> Optional[str]:
+        """Return outfit asset folder name if one exists for the selected outfit."""
+        outfit = self.cosmetics.get("outfit", "Default") if hasattr(self, "cosmetics") else "Default"
+        if outfit == "Default":
+            return None
+        outfit_dir = ASSET_DIR / "outfits" / outfit
+        return outfit if outfit_dir.exists() else None
 
     def active_trail_color(self) -> Optional[Tuple[int, int, int]]:
         trail = self.cosmetics.get("trail", "Default") if hasattr(self, "cosmetics") else "Default"
