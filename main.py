@@ -8523,7 +8523,7 @@ class ShopsHubScene(Scene):
 
     def _open_cosmetics(self):
         self.game.sound.play_event("menu_confirm")
-        self.game.change_scene(CosmeticsShopScene)
+        self.game.change_scene(CosmeticsShopScene, return_scene=self.return_scene)
 
     def _open_skills(self):
         self.game.sound.play_event("menu_confirm")

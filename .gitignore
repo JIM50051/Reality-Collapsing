@@ -24,6 +24,6 @@ Thumbs.db
 *.log
 
 # Hidden Files
-REALITY-COLLAPSING/
+/
 *.build_exe.bat
 *.Todo.txt
