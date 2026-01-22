@@ -24,6 +24,6 @@ Thumbs.db
 *.log
 
 # Hidden Files
-/
+Hidden/
 *.build_exe.bat
 
