@@ -1,4 +1,3 @@
-import os
 import sys
 
 import numpy as np
@@ -10,7 +9,7 @@ import colorsys
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, List, Optional, Set, Tuple
+from typing import Any, Callable, Dict, Iterable, List, Optional, Set, Tuple
 
 import pygame
 
