@@ -4128,7 +4128,7 @@ WORLD_THEMES = {
         platform_style="grass",
         hazard_types=["spike"],
         decoration_types=["vine", "flower"],
-    music_track="world1.mp3"
+    music_track="world1.ogg"
     ),
     2: WorldTheme(  # Stone/Mountain
         name="Rocky Heights",
@@ -4136,7 +4136,7 @@ WORLD_THEMES = {
         platform_style="stone",
         hazard_types=["spike", "rock"],
         decoration_types=["crystal", "torch"],
-    music_track="world2.mp3"
+    music_track="world2.ogg"
     ),
     3: WorldTheme(  # Desert/Sand
         name="Shifting Sands",
@@ -4144,7 +4144,7 @@ WORLD_THEMES = {
         platform_style="sandstone",
         hazard_types=["quicksand", "rock"],
         decoration_types=["cactus", "bones"],
-    music_track="world3.mp3"
+    music_track="world3.ogg"
     ),
     4: WorldTheme(  # Deep Forest
         name="Mystic Grove",
@@ -4152,7 +4152,7 @@ WORLD_THEMES = {
         platform_style="wood",
         hazard_types=["spike", "wind"],
         decoration_types=["mushroom", "firefly"],
-    music_track="world4.mp3"
+    music_track="world4.ogg"
     ),
     5: WorldTheme(  # Ice/Snow
         name="Frozen Peaks",
@@ -4160,7 +4160,7 @@ WORLD_THEMES = {
         platform_style="ice",
         hazard_types=["icicle"],
         decoration_types=["snow", "crystal"],
-    music_track="world5.mp3"
+    music_track="world5.ogg"
     ),
     6: WorldTheme(  # Fire/Volcanic
         name="Molten Core",
@@ -4168,7 +4168,7 @@ WORLD_THEMES = {
         platform_style="volcanic",
         hazard_types=["lava"],
         decoration_types=["ember", "smoke"],
-    music_track="world6.mp3"
+    music_track="world6.ogg"
     ),
     7: WorldTheme(  # Sky/Wind
         name="Cloud Kingdom",
@@ -4176,7 +4176,7 @@ WORLD_THEMES = {
         platform_style="cloud",
         hazard_types=["wind"],
         decoration_types=["cloud", "bird"],
-    music_track="world7.mp3"
+    music_track="world7.ogg"
     ),
     8: WorldTheme(  # Tech/Electric
         name="Circuit Maze",
@@ -4184,7 +4184,7 @@ WORLD_THEMES = {
         platform_style="tech",
         hazard_types=["electric"],
         decoration_types=["wire", "screen"],
-    music_track="world8.mp3"
+    music_track="world8.ogg"
     ),
     9: WorldTheme(  # Ghost/Spirit
         name="Spirit Realm",
@@ -4192,7 +4192,7 @@ WORLD_THEMES = {
         platform_style="spectral",
         hazard_types=["ghost"],
         decoration_types=["wisp", "rune"],
-    music_track="world9.mp3"
+    music_track="world9.ogg"
     ),
     10: WorldTheme(  # Glitch/Corruption
         name="Data Corruption",
@@ -4200,7 +4200,7 @@ WORLD_THEMES = {
         platform_style="glitch",
         hazard_types=["glitch"],
         decoration_types=["artifact", "static"],
-    music_track="world10.mp3"
+    music_track="world10.ogg"
     ),
 }
 
@@ -4331,11 +4331,11 @@ def _draw_glitch_overlay(surface: pygame.Surface) -> None:
 def _music_tracks() -> list[str]:
     if not MUSIC_DIR.exists():
         return []
-    tracks = [p.name for p in MUSIC_DIR.iterdir() if p.is_file() and p.suffix.lower() == ".mp3"]
+    tracks = [p.name for p in MUSIC_DIR.iterdir() if p.is_file() and p.suffix.lower() == ".ogg"]
     preferred = [
-        *[f"world{i}.mp3" for i in range(1, 11)],
-        "credits.mp3",
-        "title_theme.mp3",
+        *[f"world{i}.ogg" for i in range(1, 11)],
+        "credits.ogg",
+        "title_theme.ogg",
     ]
     lower_map = {t.lower(): t for t in tracks}
     ordered = [lower_map[name.lower()] for name in preferred if name.lower() in lower_map]
@@ -4359,7 +4359,7 @@ def run_music_player_menu(game: "Game") -> None:
         for track in tracks:
             entries.append(MenuEntry(lambda t=track: t, lambda t=track: set_override(t)))
     else:
-        entries.append(MenuEntry(lambda: "(No .mp3 files found)", lambda: None, enabled=False))
+        entries.append(MenuEntry(lambda: "(No .ogg files found)", lambda: None, enabled=False))
 
     entries.append(MenuEntry(lambda: "Back", lambda: "exit"))
 
@@ -6051,7 +6051,7 @@ class CreditsScene(Scene):
         self.reset()
 
         self.game.stop_music()
-        self.game.play_music("credits.mp3")
+        self.game.play_music("credits.ogg")
 
         self.glitch_timer = 0
         self.glitch_interval = 0.18
@@ -6492,7 +6492,7 @@ class TitleScene(Scene):
         self.game.quit()
 
     def on_enter(self) -> None:
-        self.game.play_music("title_theme.mp3")
+        self.game.play_music("title_theme.ogg")
         self._refresh_logo_assets()
 
 
@@ -8120,12 +8120,12 @@ class BossArenaScene(Scene):
         # Stop current music and play this world's music
         self._previous_music = getattr(self.game, "_last_music", None)
         self.game.stop_music()
-        self.game.play_music(f"world{self.world}.mp3")
+        self.game.play_music(f"world{self.world}.ogg")
     def on_exit(self) -> None:
         # Restore world music after boss fight ends
         if hasattr(self, "world"):
             self.game.stop_music()
-            self.game.play_music(f"world{self.world}.mp3")
+            self.game.play_music(f"world{self.world}.ogg")
         else:
             # fallback: play last music if available
             if getattr(self, "_previous_music", None):
@@ -9613,9 +9613,9 @@ class Game:
         if not path.exists():
             print(f"[Music] Missing track: {path}")
             return
-        # Only allow .mp3 for music
-        if not str(path).lower().endswith(".mp3"):
-            print(f"[Music] Refusing to play non-mp3 music: {path}")
+        # Only allow .ogg for music
+        if not str(path).lower().endswith(".ogg"):
+            print(f"[Music] Refusing to play non-ogg music: {path}")
             return
         try:
             pygame.mixer.music.load(str(path))
