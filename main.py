@@ -6347,13 +6347,9 @@ class TitleScene(Scene):
         self.bg_glitch_timer = 0.0
         self.bg_glitch_active = False
         self.background_color = (0, 0, 0)
-        self.logo_frames = []
-        self.logo_durations = []
-        self.logo_frame_index = 0
-        self.logo_frame_timer = 0.0
-        self.logo_rect = pygame.Rect(0, 0, 0, 0)
-        self.logo_animated = False
-        self._refresh_logo_assets()
+        self.logo_anim_time = 0.0
+        self.logo_rect = pygame.Rect(0, 0, 1100, 140)
+        self.logo_rect.center = (SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 - 180)
         self.menu = VerticalMenu(
             [
                 MenuEntry(lambda: " Start New Game", self.start_new_game),
@@ -6559,42 +6555,47 @@ class TitleScene(Scene):
             self.game.quit()
 
     def update(self, dt: float) -> None:
-        current_mode = bool(self.game.settings["glitch_fx"])
-        if current_mode != self.logo_animated:
-            self._refresh_logo_assets()
-
-        # Animate background
         self.bg_anim_time += dt
-        if current_mode:
+        if self.game.settings["glitch_fx"]:
             self.bg_glitch_timer += dt
             if self.bg_glitch_timer > random.uniform(1.2, 2.5):
                 self.bg_glitch_active = not self.bg_glitch_active
                 self.bg_glitch_timer = 0.0
-
-        # Animate logo
-        if len(self.logo_frames) > 1 and len(self.logo_durations) > self.logo_frame_index:
-            duration = max(0.01, self.logo_durations[self.logo_frame_index])
-            self.logo_frame_timer += dt
-            while self.logo_frame_timer >= duration:
-                self.logo_frame_timer -= duration
-                self.logo_frame_index = (self.logo_frame_index + 1) % len(self.logo_frames)
-                if len(self.logo_durations) > self.logo_frame_index:
-                    duration = max(0.01, self.logo_durations[self.logo_frame_index])
-                else:
-                    duration = 0.1
+            self.logo_anim_time += dt
+        else:
+            self.logo_anim_time = 0.0
 
     def draw(self, surface: pygame.Surface) -> None:
-        # Draw animated GIF background (title_logo.gif)
+        # Fill background
         t = self.bg_anim_time
-        gif_frames = self.logo_frames if self.logo_frames else []
-        if gif_frames:
-            frame = gif_frames[self.logo_frame_index % len(gif_frames)]
-            # Center the GIF background
-            bg_rect = frame.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 - 120))
-            surface.fill(self.background_color)
-            surface.blit(frame, bg_rect)
+        surface.fill(self.background_color)
+
+        # Draw animated glitch text as the title logo
+        # Render the logo as a single long line with glitch effect
+        logo_text = "REALITY COLLAPSING"
+        font = self.game.assets.font(112, True)
+        y = self.logo_rect.centery
+        if self.game.settings["glitch_fx"]:
+            for i in range(5):
+                offset_x = int(math.sin(self.logo_anim_time * 2.5 + i) * 8)
+                offset_y = int(math.cos(self.logo_anim_time * 2.1 + i) * 3)
+                color = (
+                    random.randint(180, 255),
+                    random.randint(80, 255),
+                    random.randint(200, 255),
+                )
+                # Draw with horizontal offset for glitchy look
+                render = font.render(logo_text, True, color)
+                rect = render.get_rect(center=(SCREEN_WIDTH // 2 + offset_x, y + offset_y))
+                surface.blit(render, rect)
+            # Draw a strong white layer on top for clarity
+            render = font.render(logo_text, True, WHITE)
+            rect = render.get_rect(center=(SCREEN_WIDTH // 2, y))
+            surface.blit(render, rect)
         else:
-            surface.fill(self.background_color)
+            render = font.render(logo_text, True, WHITE)
+            rect = render.get_rect(center=(SCREEN_WIDTH // 2, y))
+            surface.blit(render, rect)
 
         # Glitch/noise overlays (unchanged)
         if self.game.settings["glitch_fx"]:
@@ -6619,19 +6620,7 @@ class TitleScene(Scene):
                     pygame.draw.rect(glitch, color, (0, gy, SCREEN_WIDTH, gh))
                 surface.blit(glitch, (0, 0), special_flags=pygame.BLEND_RGBA_ADD)
 
-        # Animated logo with glitch flicker (drawn above background, nothing overlaps)
-        if self.logo_frames:
-            frame = self.logo_frames[self.logo_frame_index % len(self.logo_frames)]
-            rect = frame.get_rect(center=self.logo_rect.center)
-            if self.game.settings["glitch_fx"] and random.random() < 0.08:
-                flicker = pygame.Surface(rect.size, pygame.SRCALPHA)
-                for _ in range(40):
-                    fx = random.randint(0, rect.width - 1)
-                    fy = random.randint(0, rect.height - 1)
-                    flicker.set_at((fx, fy), (255, 255, 255, random.randint(60, 180)))
-                frame = frame.copy()
-                frame.blit(flicker, (0, 0), special_flags=pygame.BLEND_RGBA_ADD)
-            surface.blit(frame, rect)
+        # Title logo is now rendered as animated glitch text above
 
         # Menu and info: ensure nothing overlaps the logo area (logo is centered at y = SCREEN_HEIGHT//2 - 120)
         logo_bottom = self.logo_rect.bottom if self.logo_rect else (SCREEN_HEIGHT // 2 - 120 + 80)
@@ -6666,22 +6655,7 @@ class TitleScene(Scene):
         draw_center_text(surface, info_font, "v1.0  |  Reality Collapsing  |  by James Griepentrog", SCREEN_HEIGHT - 36, (120, 120, 160))
 
     def _refresh_logo_assets(self) -> None:
-        animated = bool(self.game.settings["glitch_fx"])
-        frames, durations = self.game.assets.title_logo_frames(animated=animated)
-        if not frames:
-            fallback = pygame.Surface((420, 160), pygame.SRCALPHA)
-            draw_center_text(fallback, self.game.assets.font(32, True), TITLE, fallback.get_height() // 2, WHITE)
-            frames = [fallback]
-            durations = [0.2]
-
-        self.logo_frames = frames
-        self.logo_durations = durations or [0.1]
-        self.logo_frame_index = 0
-        self.logo_frame_timer = 0.0
-        self.logo_animated = animated
-        first_frame = self.logo_frames[0]
-        # Move the title logo higher by decreasing the y value (e.g., -180 instead of -120)
-        self.logo_rect = first_frame.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 - 180))
+        pass  # No longer needed; logo is now glitch text
 
 class LevelSelectScene(Scene):
     def __init__(self, game: "Game"):
