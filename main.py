@@ -47,10 +47,6 @@ MUSIC_DIR = ASSET_DIR / "music"
 SAVE_FILE = BASE_DIR / "save_data.txt"
 SETTINGS_FILE = BASE_DIR / "settings.json"
 
-def load_object_image(filename: str) -> pygame.Surface:
-    path = OBJECT_DIR / filename
-    return pygame.image.load(str(path)).convert_alpha()
-
 WHITE = (255, 255, 255)
 RED = (255, 0, 0)
 BLACK = (0, 0, 0)
@@ -126,7 +122,7 @@ class VerticalMenu:
                         self.sound.play_event("menu_confirm")
                     return entry.action()
                 return None
-            if event.key == pygame.K_ESCAPE:
+            if event.key in (pygame.K_ESCAPE, pygame.K_BACKSPACE):
                 for entry in self.entries:
                     if callable(entry.label) and entry.label().lower() in ("resume", "continue"):
                         if getattr(entry, "enabled", True):
@@ -172,13 +168,15 @@ class VerticalMenu:
         max_font = 36
         entry_count = len(self.entries)
         for font_size in range(max_font, min_font - 1, -1):
-            spacing = int(font_size * 1.6)
+            spacing_mult = getattr(self, "spacing_multiplier", 1.0)
+            spacing = int(font_size * 1.6 * spacing_mult)
             total_height = entry_count * spacing
             if total_height <= max_height:
                 break
         else:
             font_size = min_font
-            spacing = int(font_size * 1.6)
+            spacing_mult = getattr(self, "spacing_multiplier", 1.0)
+            spacing = int(font_size * 1.6 * spacing_mult)
         font = assets.font(font_size, True) if assets and hasattr(assets, "font") else pygame.font.SysFont(
             "consolas", font_size, bold=True
         )
@@ -1960,27 +1958,6 @@ def glitch_flash(screen: pygame.Surface, clock: pygame.time.Clock, duration: flo
         clock.tick(FPS)
 
 
-def fade_screen(
-    screen: pygame.Surface,
-    clock: pygame.time.Clock,
-    to_black: bool = True,
-    duration: float = 0.5,
-) -> None:
-    overlay = pygame.Surface(SCREEN_SIZE)
-    start = time.time()
-    while True:
-        elapsed = time.time() - start
-        if elapsed >= duration:
-            break
-        alpha = int(255 * (elapsed / duration))
-        if not to_black:
-            alpha = 255 - alpha
-        overlay.fill((0, 0, 0))
-        overlay.set_alpha(alpha)
-        screen.blit(overlay, (0, 0))
-        pygame.display.flip()
-        clock.tick(FPS)
-
 
 def apply_stacked_glitch(surface: pygame.Surface, started: float, duration: float = 1.0) -> bool:
     if time.time() - started > duration:
@@ -2062,176 +2039,6 @@ def generate_color_wheel(radius: int = COLOR_WHEEL_RADIUS) -> pygame.Surface:
     return surface
 
 
-class ColorWheelScene(Scene):
-
-    def __init__(self, game):
-        super().__init__(game)
-        self.wheel_surface: Optional[pygame.Surface] = None
-        self.wheel_rect: Optional[pygame.Rect] = None
-        self.selection_pos: Optional[Tuple[int, int]] = None
-        self.selected_color: Tuple[int, int, int] = self.game.player_color
-        self.dragging = False
-        self.confirm_rect = pygame.Rect(0, 0, 220, 56)
-        self.back_rect = pygame.Rect(0, 0, 180, 48)
-        self.hovered_button = None
-
-    def on_enter(self) -> None:
-        # Stop any previous music (including title theme) before playing world music
-        self.game.stop_music()
-        self.game.pause_speedrun(False)
-        # Only call _refresh_world if it exists
-        if hasattr(self, '_refresh_world'):
-            self._refresh_world()
-        self.wheel_surface = generate_color_wheel(COLOR_WHEEL_RADIUS)
-        wheel_center = (SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 - 40)
-        self.wheel_rect = self.wheel_surface.get_rect(center=wheel_center)
-        self.selection_pos = self._pos_from_color(self.selected_color)
-        self.confirm_rect.center = (SCREEN_WIDTH // 2 + 180, SCREEN_HEIGHT - 110)
-        self.back_rect.center = (SCREEN_WIDTH // 2 - 200, SCREEN_HEIGHT - 110)
-        self.dragging = False
-        self.hovered_button = None
-
-    def handle_event(self, event: pygame.event.Event) -> None:
-        if event.type == pygame.QUIT:
-            self.game.quit()
-        elif event.type == pygame.KEYDOWN:
-            if event.key == pygame.K_ESCAPE:
-                self.game.sound.play_event("menu_confirm")
-                self.game.change_scene("TitleScene")
-            elif event.key in (pygame.K_RETURN, pygame.K_SPACE):
-                self._finalize_selection()
-        elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            if self.confirm_rect.collidepoint(event.pos):
-                self._finalize_selection()
-                return
-            if self.back_rect.collidepoint(event.pos):
-                self.game.sound.play_event("menu_confirm")
-                self.game.change_scene("TitleScene")
-                return
-            if self._update_selection(event.pos):
-                self.dragging = True
-        elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
-            self.dragging = False
-        elif event.type == pygame.MOUSEMOTION:
-            # Button hover effect
-            if self.confirm_rect.collidepoint(event.pos):
-                self.hovered_button = "confirm"
-            elif self.back_rect.collidepoint(event.pos):
-                self.hovered_button = "back"
-            else:
-                self.hovered_button = None
-            if self.dragging:
-                self._update_selection(event.pos)
-
-    def update(self, dt: float) -> None:
-        pass
-
-    def draw(self, surface: pygame.Surface) -> None:
-        surface.fill((18, 18, 38))
-        title_font = self.game.assets.font(54, True)
-        draw_glitch_text(
-            surface,
-            title_font,
-            "CHOOSE YOUR COLOR",
-            90,
-            WHITE,
-            self.game.settings["glitch_fx"],
-        )
-
-        # Draw color wheel
-        if self.wheel_surface and self.wheel_rect:
-            surface.blit(self.wheel_surface, self.wheel_rect)
-            if self.selection_pos:
-                pygame.draw.circle(surface, WHITE, self.selection_pos, 12, width=4)
-                pygame.draw.circle(surface, BLACK, self.selection_pos, 18, width=2)
-
-        # Color preview
-        preview_rect = pygame.Rect(0, 0, 180, 180)
-        preview_rect.center = (SCREEN_WIDTH // 2 + 180, SCREEN_HEIGHT // 2 - 40)
-        pygame.draw.rect(surface, (40, 40, 60), preview_rect, border_radius=18)
-        pygame.draw.rect(surface, self.selected_color, preview_rect.inflate(-32, -32), border_radius=16)
-        pygame.draw.rect(surface, WHITE, preview_rect, width=3, border_radius=18)
-
-        info_font = self.game.assets.font(22, False)
-        draw_prompt_with_icons(
-            surface,
-            info_font,
-            "Click the wheel to select a color.",
-            SCREEN_HEIGHT // 2 + 120,
-            WHITE,
-            device=getattr(self.game, "last_input_device", "mouse"),
-        )
-        device = getattr(self.game, "last_input_device", "keyboard")
-        if device == "controller":
-            prompt_text = "Press A to continue, B to return."
-        elif device == "mouse":
-            prompt_text = "Click Continue or Back to return."
-        else:
-            prompt_text = "Press ENTER or Continue to start, ESC or Back to return."
-        draw_prompt_with_icons(
-            surface,
-            info_font,
-            prompt_text,
-            SCREEN_HEIGHT // 2 + 150,
-            WHITE,
-            device=device,
-        )
-
-        # Draw buttons with hover effect
-        self._draw_button(surface, self.confirm_rect, "Continue", self.hovered_button == "confirm")
-        self._draw_button(surface, self.back_rect, "Back", self.hovered_button == "back")
-
-    def _draw_button(self, surface: pygame.Surface, rect: pygame.Rect, label: str, highlighted: bool) -> None:
-        base_color = (120, 180, 255) if highlighted else (80, 80, 120)
-        hover = rect.collidepoint(pygame.mouse.get_pos())
-        if hover:
-            base_color = tuple(min(255, c + 40) for c in base_color)
-        pygame.draw.rect(surface, base_color, rect, border_radius=14)
-        pygame.draw.rect(surface, WHITE, rect, width=3, border_radius=14)
-        font = self.game.assets.font(28, True)
-        text = font.render(label, True, WHITE)
-        surface.blit(text, text.get_rect(center=rect.center))
-
-    def _finalize_selection(self) -> None:
-        self.game.sound.play_event("menu_confirm")
-        self.game.player_color = self.selected_color
-        self.game.world1_intro_shown = False
-        self.game.progress.reset()
-        self.game.start_speedrun()
-        from main import GameplayScene
-        self.game.change_scene(GameplayScene, world=1, level=1)
-
-    def _update_selection(self, pos: Tuple[int, int]) -> bool:
-        if not self.wheel_rect or not self.wheel_surface:
-            return False
-        local = (pos[0] - self.wheel_rect.left, pos[1] - self.wheel_rect.top)
-        radius = COLOR_WHEEL_RADIUS
-        dx = local[0] - radius
-        dy = local[1] - radius
-        if math.hypot(dx, dy) > radius:
-            return False
-        try:
-            color = self.wheel_surface.get_at((int(local[0]), int(local[1])))[:3]
-        except IndexError:
-            return False
-        self.selected_color = color
-        self.selection_pos = (self.wheel_rect.left + int(local[0]),
-                              self.wheel_rect.top + int(local[1]))
-        return True
-
-    def _pos_from_color(self, color: Tuple[int, int, int]) -> Tuple[int, int]:
-        if not self.wheel_rect:
-            return (SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 - 40)
-        r, g, b = [c / 255.0 for c in color]
-        h, s, v = colorsys.rgb_to_hsv(r, g, b)
-        angle = h * math.tau
-        distance = min(1.0, max(0.0, s)) * COLOR_WHEEL_RADIUS
-        local_x = COLOR_WHEEL_RADIUS + int(math.cos(angle) * distance)
-        local_y = COLOR_WHEEL_RADIUS - int(math.sin(angle) * distance)
-        return (self.wheel_rect.left + local_x, self.wheel_rect.top + local_y)
-
-
-
 def apply_dynamic_glitch(surface: pygame.Surface, strength: float) -> None:
     strength = max(0.2, min(strength, 2.0))
     tear_count = max(3, int(4 * strength))
@@ -2271,681 +2078,319 @@ def apply_dynamic_glitch(surface: pygame.Surface, strength: float) -> None:
 
 
 
-# --- Unique World Transition Cutscenes ---
-def play_world_transition(game: "Game", from_world: int, to_world: int) -> None:
-    # Route to unique cutscene for each world transition (except 9->10 and final)
-    if from_world == 1 and to_world == 2:
-        play_transition_1_to_2(game)
-    elif from_world == 2 and to_world == 3:
-        play_transition_2_to_3(game)
-    elif from_world == 3 and to_world == 4:
-        play_transition_3_to_4(game)
-    elif from_world == 4 and to_world == 5:
-        play_transition_4_to_5(game)
-    elif from_world == 5 and to_world == 6:
-        play_transition_5_to_6(game)
-    elif from_world == 6 and to_world == 7:
-        play_transition_6_to_7(game)
-    elif from_world == 7 and to_world == 8:
-        play_transition_7_to_8(game)
-    elif from_world == 8 and to_world == 9:
-        play_transition_8_to_9(game)
-    elif from_world == 9 and to_world == 10:
-        # Special glitch portal cutscene handled elsewhere
-        pass
-    else:
-        # Fallback: original transition
-        play_default_world_transition(game, from_world, to_world)
+# --- World Transition System ---
+TRANSITION_CONFIGS: Dict[Tuple[int, int], Dict[str, Any]] = {
+    (1, 2): {
+        "effect": "vines_stone",
+        "text1": "The forest recedes...",
+        "text2": "Stone towers emerge.",
+        "shimmer": (200, 255, 200),
+        "params": {"vines_color": (60, 180, 80), "stone_color": (120, 120, 140)},
+    },
+    (2, 3): {
+        "effect": "stone_sand",
+        "text1": "Stone crumbles...",
+        "text2": "Sand sweeps in.",
+        "shimmer": (255, 255, 200),
+        "params": {},
+    },
+    (3, 4): {
+        "effect": "sand_nature",
+        "text1": "Sandstorm fades...",
+        "text2": "Nature reclaims the land.",
+        "shimmer": (180, 255, 180),
+        "params": {},
+    },
+    (4, 5): {
+        "effect": "nature_frost",
+        "text1": "Nature freezes...",
+        "text2": "Frost covers the land.",
+        "shimmer": (200, 255, 255),
+        "params": {},
+    },
+    (5, 6): {
+        "effect": "frost_flame",
+        "text1": "Ice cracks...",
+        "text2": "Flames erupt.",
+        "shimmer": (255, 200, 100),
+        "params": {},
+    },
+    (6, 7): {
+        "effect": "flame_air",
+        "text1": "Flames die out...",
+        "text2": "Winds howl.",
+        "shimmer": (200, 240, 255),
+        "params": {},
+    },
+    (7, 8): {
+        "effect": "air_circuits",
+        "text1": "Winds subside...",
+        "text2": "Electricity surges.",
+        "shimmer": (80, 200, 255),
+        "params": {},
+    },
+    (8, 9): {
+        "effect": "circuits_echoes",
+        "text1": "Electricity fades...",
+        "text2": "Ghostly echoes appear.",
+        "shimmer": (200, 200, 255),
+        "params": {},
+    },
+}
 
 
-def play_default_world_transition(game: "Game", from_world: int, to_world: int) -> None:
-    game.pause_speedrun(True)
-    game.stop_music()
-    game.sound.play_event("world_transition")
-    new_color = BG_COLORS[min(to_world - 1, len(BG_COLORS) - 1)]
-    title_font = game.assets.font(44, True)
-    subtitle_font = game.assets.font(24, False)
-    subtitle = TOWER_NAMES[to_world - 1] if 1 <= to_world <= len(TOWER_NAMES) else ""
-    start = time.time()
-    duration = 2.6
-    half = duration / 2
-    while game.running and time.time() - start < duration:
-        elapsed = time.time() - start
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                game.quit()
-                game.pause_speedrun(False)
-                return
-        game.screen.fill((0, 0, 0))
-        overlay = pygame.Surface(SCREEN_SIZE)
-        overlay.fill(new_color)
-        overlay.set_alpha(120)
-        game.screen.blit(overlay, (0, 0))
-        if elapsed < half:
-            alpha = int(min(1.0, elapsed / (half * 0.7)) * 255)
-            text = f"World {from_world} Complete"
-            render = title_font.render(text, True, WHITE)
-            render.set_alpha(alpha)
-            game.screen.blit(render, render.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 - 20)))
-        else:
-            alpha = int(min(1.0, (elapsed - half) / (half * 0.7)) * 255)
-            text = f"Entering World {to_world}"
-            render = title_font.render(text, True, WHITE)
-            render.set_alpha(alpha)
-            game.screen.blit(render, render.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 - 20)))
-            if subtitle:
-                sub = subtitle_font.render(subtitle, True, WHITE)
-                sub.set_alpha(alpha)
-                game.screen.blit(sub, sub.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 30)))
-        pygame.display.flip()
-        game.clock.tick(FPS)
-    game.pause_speedrun(False)
+def _draw_transition_shimmer(surface: pygame.Surface, color: Tuple[int, int, int], alpha: int, count: int) -> None:
+    if alpha <= 0:
+        return
+    shimmer = pygame.Surface(SCREEN_SIZE, pygame.SRCALPHA)
+    for _ in range(count):
+        x = random.randint(0, SCREEN_WIDTH)
+        y = random.randint(0, SCREEN_HEIGHT)
+        pygame.draw.circle(shimmer, (*color, alpha), (x, y), random.randint(2, 6))
+    surface.blit(shimmer, (0, 0))
 
-# --- Unique cutscene implementations ---
-def play_transition_1_to_2(game):
-    # Forest to Stone: vines recede, stone rises
-    game.pause_speedrun(True)
-    game.stop_music()
-    game.sound.play_event("world_transition")
-    bg1 = game.assets.background(1)
-    bg2 = game.assets.background(2)
-    font = game.assets.font(44, True)
-    start = time.time()
-    duration = 4.5  # Longer duration
-    extra_fx_time = 1.2  # Extra time for dramatic effects
-    vines_color = (60, 180, 80)
-    stone_color = (120, 120, 140)
-    while game.running and time.time() - start < duration + extra_fx_time:
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                game.quit()
-                return
-        elapsed = time.time() - start
-        t = min(1.0, elapsed / duration)
-        # Blend backgrounds
-        game.screen.blit(bg1, (0, 0))
-        overlay = pygame.Surface(SCREEN_SIZE)
-        overlay.blit(bg2, (0, int((1-t)*SCREEN_HEIGHT)))
-        overlay.set_alpha(int(180 * t))
-        game.screen.blit(overlay, (0, 0))
-        # Animate vines receding (green rectangles, now animated with sway)
+
+def _draw_transition_effect(
+    game: "Game",
+    effect: str,
+    t: float,
+    elapsed: float,
+    params: Dict[str, Any],
+) -> None:
+    screen = game.screen
+    if effect == "vines_stone":
+        vines_color = params.get("vines_color", (60, 180, 80))
+        stone_color = params.get("stone_color", (120, 120, 140))
         for i in range(8):
-            y = int(SCREEN_HEIGHT * (i+1) / 9)
-            width = int(SCREEN_WIDTH * (1-t))
+            y = int(SCREEN_HEIGHT * (i + 1) / 9)
+            width = int(SCREEN_WIDTH * (1 - t))
             sway = int(10 * math.sin(elapsed * 2 + i))
-            pygame.draw.rect(game.screen, vines_color, (0, y + sway, width, 8))
-        # Stone rises with shake
+            pygame.draw.rect(screen, vines_color, (0, y + sway, width, 8))
         for i in range(6):
-            x = int(SCREEN_WIDTH * (i+1) / 7)
+            x = int(SCREEN_WIDTH * (i + 1) / 7)
             height = int(SCREEN_HEIGHT * t)
             shake = int(4 * math.sin(elapsed * 3 + i))
-            pygame.draw.rect(game.screen, stone_color, (x + shake, SCREEN_HEIGHT-height, 16, height))
-        # Dramatic flash as stone emerges
+            pygame.draw.rect(screen, stone_color, (x + shake, SCREEN_HEIGHT - height, 16, height))
         if t > 0.85:
-            flash_alpha = int(180 * (t-0.85)/0.15)
+            flash_alpha = int(180 * (t - 0.85) / 0.15)
             if flash_alpha > 0:
                 flash = pygame.Surface(SCREEN_SIZE)
-                flash.fill((255,255,255))
+                flash.fill((255, 255, 255))
                 flash.set_alpha(min(255, flash_alpha))
-                game.screen.blit(flash, (0,0))
-        # Text
-        alpha = int(255 * t)
-        text = "The forest recedes..."
-        render = font.render(text, True, WHITE)
-        render.set_alpha(alpha)
-        game.screen.blit(render, render.get_rect(center=(SCREEN_WIDTH//2, 120)))
-        text2 = "Stone towers emerge."
-        render2 = font.render(text2, True, WHITE)
-        render2.set_alpha(alpha)
-        game.screen.blit(render2, render2.get_rect(center=(SCREEN_WIDTH//2, 180)))
-        # Extra dramatic pause and shimmer after transition
-        if elapsed > duration:
-            shimmer_alpha = int(120 * (1 - (elapsed-duration)/extra_fx_time))
-            if shimmer_alpha > 0:
-                shimmer = pygame.Surface(SCREEN_SIZE, pygame.SRCALPHA)
-                for i in range(30):
-                    x = random.randint(0, SCREEN_WIDTH)
-                    y = random.randint(0, SCREEN_HEIGHT)
-                    pygame.draw.circle(shimmer, (200,255,200,shimmer_alpha), (x,y), random.randint(2,6))
-                game.screen.blit(shimmer, (0,0))
-        pygame.display.flip()
-        game.clock.tick(FPS)
-    game.pause_speedrun(False)
+                screen.blit(flash, (0, 0))
+        return
 
-def play_transition_2_to_3(game):
-    # Stone to Sand: stone cracks, sand blows in
-    game.pause_speedrun(True)
-    game.stop_music()
-    game.sound.play_event("world_transition")
-    bg1 = game.assets.background(2)
-    bg2 = game.assets.background(3)
-    font = game.assets.font(44, True)
-    start = time.time()
-    duration = 4.5
-    extra_fx_time = 1.2
-    while game.running and time.time() - start < duration + extra_fx_time:
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                game.quit()
-                return
-        elapsed = time.time() - start
-        t = min(1.0, elapsed / duration)
-        game.screen.blit(bg1, (0, 0))
-        # Cracks animate with jitter
+    if effect == "stone_sand":
         for i in range(8):
-            x = int(SCREEN_WIDTH * (i+1) / 9)
+            x = int(SCREEN_WIDTH * (i + 1) / 9)
             y1 = int(SCREEN_HEIGHT * 0.3)
             y2 = int(SCREEN_HEIGHT * (0.3 + 0.4 * t))
             jitter = int(4 * math.sin(elapsed * 3 + i))
-            pygame.draw.line(game.screen, (180, 180, 180), (x + jitter, y1), (x + jitter, y2), 2)
-        # Sand overlay
+            pygame.draw.line(screen, (180, 180, 180), (x + jitter, y1), (x + jitter, y2), 2)
         sand_overlay = pygame.Surface(SCREEN_SIZE, pygame.SRCALPHA)
         sand_overlay.fill((220, 200, 120, int(120 * t)))
-        game.screen.blit(sand_overlay, (0, 0))
-        # Sand blows in (more, with wind effect)
+        screen.blit(sand_overlay, (0, 0))
         for i in range(80):
             sx = int(random.uniform(0, SCREEN_WIDTH))
-            sy = int(SCREEN_HEIGHT * (1-t) + random.uniform(-30, 30))
+            sy = int(SCREEN_HEIGHT * (1 - t) + random.uniform(-30, 30))
             wind = int(20 * math.sin(elapsed * 2 + i))
-            pygame.draw.circle(game.screen, (230, 210, 140), (sx + wind, sy), random.randint(2, 5))
-        # Fade in new bg
-        overlay = pygame.Surface(SCREEN_SIZE)
-        overlay.blit(bg2, (0, 0))
-        overlay.set_alpha(int(180 * t))
-        game.screen.blit(overlay, (0, 0))
-        # Dramatic sand shimmer at end
-        if t > 0.85:
-            shimmer_alpha = int(120 * (t-0.85)/0.15)
-            if shimmer_alpha > 0:
-                shimmer = pygame.Surface(SCREEN_SIZE, pygame.SRCALPHA)
-                for i in range(40):
-                    x = random.randint(0, SCREEN_WIDTH)
-                    y = random.randint(0, SCREEN_HEIGHT)
-                    pygame.draw.circle(shimmer, (255,255,200,shimmer_alpha), (x,y), random.randint(2,6))
-                game.screen.blit(shimmer, (0,0))
-        # Text
-        alpha = int(255 * t)
-        text = "Stone crumbles..."
-        render = font.render(text, True, WHITE)
-        render.set_alpha(alpha)
-        game.screen.blit(render, render.get_rect(center=(SCREEN_WIDTH//2, 120)))
-        text2 = "Sand sweeps in."
-        render2 = font.render(text2, True, WHITE)
-        render2.set_alpha(alpha)
-        game.screen.blit(render2, render2.get_rect(center=(SCREEN_WIDTH//2, 180)))
-        # Extra dramatic pause and shimmer after transition
-        if elapsed > duration:
-            shimmer_alpha = int(120 * (1 - (elapsed-duration)/extra_fx_time))
-            if shimmer_alpha > 0:
-                shimmer = pygame.Surface(SCREEN_SIZE, pygame.SRCALPHA)
-                for i in range(30):
-                    x = random.randint(0, SCREEN_WIDTH)
-                    y = random.randint(0, SCREEN_HEIGHT)
-                    pygame.draw.circle(shimmer, (255,255,200,shimmer_alpha), (x,y), random.randint(2,6))
-                game.screen.blit(shimmer, (0,0))
-        pygame.display.flip()
-        game.clock.tick(FPS)
-    game.pause_speedrun(False)
+            pygame.draw.circle(screen, (230, 210, 140), (sx + wind, sy), random.randint(2, 5))
+        return
 
-def play_transition_3_to_4(game):
-    # Sand to Nature: sandstorm fades, mushrooms/thorns grow
-    game.pause_speedrun(True)
-    game.stop_music()
-    game.sound.play_event("world_transition")
-    bg1 = game.assets.background(3)
-    bg2 = game.assets.background(4)
-    font = game.assets.font(44, True)
-    start = time.time()
-    duration = 4.5
-    extra_fx_time = 1.2
-    while game.running and time.time() - start < duration + extra_fx_time:
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                game.quit()
-                return
-        elapsed = time.time() - start
-        t = min(1.0, elapsed / duration)
-        game.screen.blit(bg1, (0, 0))
-        # Sandstorm swirls
+    if effect == "sand_nature":
         for i in range(80):
             sx = int(random.uniform(0, SCREEN_WIDTH))
             sy = int(random.uniform(0, SCREEN_HEIGHT))
             swirl = int(10 * math.sin(elapsed * 2 + i))
-            alpha = int(80 * (1-t))
-            pygame.draw.circle(game.screen, (230, 210, 140, alpha), (sx + swirl, sy), random.randint(2, 6))
-        # Mushrooms/thorns grow, animated
+            alpha = int(80 * (1 - t))
+            pygame.draw.circle(screen, (230, 210, 140, alpha), (sx + swirl, sy), random.randint(2, 6))
         for i in range(16):
-            base_x = int(SCREEN_WIDTH * (i+1) / 17)
+            base_x = int(SCREEN_WIDTH * (i + 1) / 17)
             grow = math.sin(elapsed * 2 + i) * 0.1 + 1.0
             h = int(SCREEN_HEIGHT * t * random.uniform(0.2, 0.5) * grow)
-            pygame.draw.rect(game.screen, (120, 200, 120), (base_x, SCREEN_HEIGHT-h, 12, h))
-            pygame.draw.ellipse(game.screen, (180, 80, 180), (base_x-8, SCREEN_HEIGHT-h-16, 28, 20))
-        # Fade in new bg
-        overlay = pygame.Surface(SCREEN_SIZE)
-        overlay.blit(bg2, (0, 0))
-        overlay.set_alpha(int(180 * t))
-        game.screen.blit(overlay, (0, 0))
-        # Dramatic nature shimmer at end
-        if t > 0.85:
-            shimmer_alpha = int(120 * (t-0.85)/0.15)
-            if shimmer_alpha > 0:
-                shimmer = pygame.Surface(SCREEN_SIZE, pygame.SRCALPHA)
-                for i in range(40):
-                    x = random.randint(0, SCREEN_WIDTH)
-                    y = random.randint(0, SCREEN_HEIGHT)
-                    pygame.draw.circle(shimmer, (180,255,180,shimmer_alpha), (x,y), random.randint(2,6))
-                game.screen.blit(shimmer, (0,0))
-        # Text
-        alpha = int(255 * t)
-        text = "Sandstorm fades..."
-        render = font.render(text, True, WHITE)
-        render.set_alpha(alpha)
-        game.screen.blit(render, render.get_rect(center=(SCREEN_WIDTH//2, 120)))
-        text2 = "Nature reclaims the land."
-        render2 = font.render(text2, True, WHITE)
-        render2.set_alpha(alpha)
-        game.screen.blit(render2, render2.get_rect(center=(SCREEN_WIDTH//2, 180)))
-        # Extra dramatic pause and shimmer after transition
-        if elapsed > duration:
-            shimmer_alpha = int(120 * (1 - (elapsed-duration)/extra_fx_time))
-            if shimmer_alpha > 0:
-                shimmer = pygame.Surface(SCREEN_SIZE, pygame.SRCALPHA)
-                for i in range(30):
-                    x = random.randint(0, SCREEN_WIDTH)
-                    y = random.randint(0, SCREEN_HEIGHT)
-                    pygame.draw.circle(shimmer, (180,255,180,shimmer_alpha), (x,y), random.randint(2,6))
-                game.screen.blit(shimmer, (0,0))
-        pygame.display.flip()
-        game.clock.tick(FPS)
-    game.pause_speedrun(False)
+            pygame.draw.rect(screen, (120, 200, 120), (base_x, SCREEN_HEIGHT - h, 12, h))
+            pygame.draw.ellipse(screen, (180, 80, 180), (base_x - 8, SCREEN_HEIGHT - h - 16, 28, 20))
+        return
 
-def play_transition_4_to_5(game):
-    # Nature to Frost: frost creeps in, snow falls
-    game.pause_speedrun(True)
-    game.stop_music()
-    game.sound.play_event("world_transition")
-    bg1 = game.assets.background(4)
-    bg2 = game.assets.background(5)
-    font = game.assets.font(44, True)
-    start = time.time()
-    duration = 4.5
-    extra_fx_time = 1.2
-    while game.running and time.time() - start < duration + extra_fx_time:
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                game.quit()
-                return
-        elapsed = time.time() - start
-        t = min(1.0, elapsed / duration)
-        game.screen.blit(bg1, (0, 0))
-        # Frost overlay creeps in from edges
+    if effect == "nature_frost":
         frost = pygame.Surface(SCREEN_SIZE, pygame.SRCALPHA)
         frost_alpha = int(120 * t)
         for i in range(0, SCREEN_WIDTH, 40):
             pygame.draw.rect(frost, (180, 220, 255, frost_alpha), (i, 0, 40, int(SCREEN_HEIGHT * t)))
-        game.screen.blit(frost, (0, 0))
-        # Snow (more, animated)
+        screen.blit(frost, (0, 0))
         for i in range(120):
             sx = int(random.uniform(0, SCREEN_WIDTH))
             sy = int((random.uniform(0, SCREEN_HEIGHT) + elapsed * 60) % SCREEN_HEIGHT)
-            pygame.draw.circle(game.screen, (255, 255, 255), (sx, sy), random.randint(2, 5))
-        # Fade in new bg
-        overlay = pygame.Surface(SCREEN_SIZE)
-        overlay.blit(bg2, (0, 0))
-        overlay.set_alpha(int(180 * t))
-        game.screen.blit(overlay, (0, 0))
-        # Dramatic frost shimmer at end
-        if t > 0.85:
-            shimmer_alpha = int(120 * (t-0.85)/0.15)
-            if shimmer_alpha > 0:
-                shimmer = pygame.Surface(SCREEN_SIZE, pygame.SRCALPHA)
-                for i in range(40):
-                    x = random.randint(0, SCREEN_WIDTH)
-                    y = random.randint(0, SCREEN_HEIGHT)
-                    pygame.draw.circle(shimmer, (200,255,255,shimmer_alpha), (x,y), random.randint(2,6))
-                game.screen.blit(shimmer, (0,0))
-        # Text
-        alpha = int(255 * t)
-        text = "Nature freezes..."
-        render = font.render(text, True, WHITE)
-        render.set_alpha(alpha)
-        game.screen.blit(render, render.get_rect(center=(SCREEN_WIDTH//2, 120)))
-        text2 = "Frost covers the land."
-        render2 = font.render(text2, True, WHITE)
-        render2.set_alpha(alpha)
-        game.screen.blit(render2, render2.get_rect(center=(SCREEN_WIDTH//2, 180)))
-        # Extra dramatic pause and shimmer after transition
-        if elapsed > duration:
-            shimmer_alpha = int(120 * (1 - (elapsed-duration)/extra_fx_time))
-            if shimmer_alpha > 0:
-                shimmer = pygame.Surface(SCREEN_SIZE, pygame.SRCALPHA)
-                for i in range(30):
-                    x = random.randint(0, SCREEN_WIDTH)
-                    y = random.randint(0, SCREEN_HEIGHT)
-                    pygame.draw.circle(shimmer, (200,255,255,shimmer_alpha), (x,y), random.randint(2,6))
-                game.screen.blit(shimmer, (0,0))
-        pygame.display.flip()
-        game.clock.tick(FPS)
-    game.pause_speedrun(False)
+            pygame.draw.circle(screen, (255, 255, 255), (sx, sy), random.randint(2, 5))
+        return
 
-def play_transition_5_to_6(game):
-    # Frost to Flame: ice cracks, fire spreads
-    game.pause_speedrun(True)
-    game.stop_music()
-    game.sound.play_event("world_transition")
-    bg1 = game.assets.background(5)
-    bg2 = game.assets.background(6)
-    font = game.assets.font(44, True)
-    start = time.time()
-    duration = 4.5
-    extra_fx_time = 1.2
-    while game.running and time.time() - start < duration + extra_fx_time:
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                game.quit()
-                return
-        elapsed = time.time() - start
-        t = min(1.0, elapsed / duration)
-        game.screen.blit(bg1, (0, 0))
-        # Ice cracks animate
+    if effect == "frost_flame":
         for i in range(14):
-            x = int(SCREEN_WIDTH * (i+1) / 15)
+            x = int(SCREEN_WIDTH * (i + 1) / 15)
             y1 = int(SCREEN_HEIGHT * 0.7)
             y2 = int(SCREEN_HEIGHT * (0.7 - 0.5 * t))
             shake = int(4 * math.sin(elapsed * 2 + i))
-            pygame.draw.line(game.screen, (200, 240, 255), (x + shake, y1), (x + shake, y2), 3)
-        # Fire overlay
+            pygame.draw.line(screen, (200, 240, 255), (x + shake, y1), (x + shake, y2), 3)
         fire = pygame.Surface(SCREEN_SIZE, pygame.SRCALPHA)
         fire.fill((255, 80, 40, int(120 * t)))
-        game.screen.blit(fire, (0, 0))
-        # Fire sparks (more, animated)
+        screen.blit(fire, (0, 0))
         for i in range(60):
             sx = int(random.uniform(0, SCREEN_WIDTH))
             sy = int((random.uniform(0, SCREEN_HEIGHT) + elapsed * 80) % SCREEN_HEIGHT)
-            pygame.draw.circle(game.screen, (255, 180, 80), (sx, sy), random.randint(2, 4))
-        # Fade in new bg
-        overlay = pygame.Surface(SCREEN_SIZE)
-        overlay.blit(bg2, (0, 0))
-        overlay.set_alpha(int(180 * t))
-        game.screen.blit(overlay, (0, 0))
-        # Dramatic fire shimmer at end
-        if t > 0.85:
-            shimmer_alpha = int(120 * (t-0.85)/0.15)
-            if shimmer_alpha > 0:
-                shimmer = pygame.Surface(SCREEN_SIZE, pygame.SRCALPHA)
-                for i in range(40):
-                    x = random.randint(0, SCREEN_WIDTH)
-                    y = random.randint(0, SCREEN_HEIGHT)
-                    pygame.draw.circle(shimmer, (255,200,100,shimmer_alpha), (x,y), random.randint(2,6))
-                game.screen.blit(shimmer, (0,0))
-        # Text
-        alpha = int(255 * t)
-        text = "Ice cracks..."
-        render = font.render(text, True, WHITE)
-        render.set_alpha(alpha)
-        game.screen.blit(render, render.get_rect(center=(SCREEN_WIDTH//2, 120)))
-        text2 = "Flames erupt."
-        render2 = font.render(text2, True, WHITE)
-        render2.set_alpha(alpha)
-        game.screen.blit(render2, render2.get_rect(center=(SCREEN_WIDTH//2, 180)))
-        # Extra dramatic pause and shimmer after transition
-        if elapsed > duration:
-            shimmer_alpha = int(120 * (1 - (elapsed-duration)/extra_fx_time))
-            if shimmer_alpha > 0:
-                shimmer = pygame.Surface(SCREEN_SIZE, pygame.SRCALPHA)
-                for i in range(30):
-                    x = random.randint(0, SCREEN_WIDTH)
-                    y = random.randint(0, SCREEN_HEIGHT)
-                    pygame.draw.circle(shimmer, (255,200,100,shimmer_alpha), (x,y), random.randint(2,6))
-                game.screen.blit(shimmer, (0,0))
-        pygame.display.flip()
-        game.clock.tick(FPS)
-    game.pause_speedrun(False)
+            pygame.draw.circle(screen, (255, 180, 80), (sx, sy), random.randint(2, 4))
+        return
 
-def play_transition_6_to_7(game):
-    # Flame to Air: smoke rises, wind blows
-    game.pause_speedrun(True)
-    game.stop_music()
-    game.sound.play_event("world_transition")
-    bg1 = game.assets.background(6)
-    bg2 = game.assets.background(7)
-    font = game.assets.font(44, True)
-    start = time.time()
-    duration = 4.5
-    extra_fx_time = 1.2
-    while game.running and time.time() - start < duration + extra_fx_time:
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                game.quit()
-                return
-        elapsed = time.time() - start
-        t = min(1.0, elapsed / duration)
-        game.screen.blit(bg1, (0, 0))
-        # Smoke (more, animated)
+    if effect == "flame_air":
         for i in range(80):
             sx = int(random.uniform(0, SCREEN_WIDTH))
-            sy = int(SCREEN_HEIGHT * (1-t) + random.uniform(-30, 30))
+            sy = int(SCREEN_HEIGHT * (1 - t) + random.uniform(-30, 30))
             drift = int(10 * math.sin(elapsed * 2 + i))
-            pygame.draw.circle(game.screen, (120, 120, 120, int(80 * (1-t))), (sx + drift, sy), random.randint(4, 8))
-        # Wind overlay (animated)
+            pygame.draw.circle(screen, (120, 120, 120, int(80 * (1 - t))), (sx + drift, sy), random.randint(4, 8))
         wind = pygame.Surface(SCREEN_SIZE, pygame.SRCALPHA)
         wind.fill((180, 220, 255, int(80 * t)))
         for i in range(10):
-            wx = int(SCREEN_WIDTH * (i+1) / 11)
+            wx = int(SCREEN_WIDTH * (i + 1) / 11)
             wy = int(SCREEN_HEIGHT * 0.5 + 40 * math.sin(elapsed * 2 + i))
-            pygame.draw.line(wind, (200, 240, 255, 80), (wx, wy), (wx, wy+80), 4)
-        game.screen.blit(wind, (0, 0))
-        # Fade in new bg
-        overlay = pygame.Surface(SCREEN_SIZE)
-        overlay.blit(bg2, (0, 0))
-        overlay.set_alpha(int(180 * t))
-        game.screen.blit(overlay, (0, 0))
-        # Dramatic wind shimmer at end
-        if t > 0.85:
-            shimmer_alpha = int(120 * (t-0.85)/0.15)
-            if shimmer_alpha > 0:
-                shimmer = pygame.Surface(SCREEN_SIZE, pygame.SRCALPHA)
-                for i in range(40):
-                    x = random.randint(0, SCREEN_WIDTH)
-                    y = random.randint(0, SCREEN_HEIGHT)
-                    pygame.draw.circle(shimmer, (200,240,255,shimmer_alpha), (x,y), random.randint(2,6))
-                game.screen.blit(shimmer, (0,0))
-        # Text
-        alpha = int(255 * t)
-        text = "Flames die out..."
-        render = font.render(text, True, WHITE)
-        render.set_alpha(alpha)
-        game.screen.blit(render, render.get_rect(center=(SCREEN_WIDTH//2, 120)))
-        text2 = "Winds howl."
-        render2 = font.render(text2, True, WHITE)
-        render2.set_alpha(alpha)
-        game.screen.blit(render2, render2.get_rect(center=(SCREEN_WIDTH//2, 180)))
-        # Extra dramatic pause and shimmer after transition
-        if elapsed > duration:
-            shimmer_alpha = int(120 * (1 - (elapsed-duration)/extra_fx_time))
-            if shimmer_alpha > 0:
-                shimmer = pygame.Surface(SCREEN_SIZE, pygame.SRCALPHA)
-                for i in range(30):
-                    x = random.randint(0, SCREEN_WIDTH)
-                    y = random.randint(0, SCREEN_HEIGHT)
-                    pygame.draw.circle(shimmer, (200,240,255,shimmer_alpha), (x,y), random.randint(2,6))
-                game.screen.blit(shimmer, (0,0))
-        pygame.display.flip()
-        game.clock.tick(FPS)
-    game.pause_speedrun(False)
+            pygame.draw.line(wind, (200, 240, 255, 80), (wx, wy), (wx, wy + 80), 4)
+        screen.blit(wind, (0, 0))
+        return
 
-def play_transition_7_to_8(game):
-    # Air to Circuits: wind fades, electric arcs
-    game.pause_speedrun(True)
-    game.stop_music()
-    game.sound.play_event("world_transition")
-    bg1 = game.assets.background(7)
-    bg2 = game.assets.background(8)
-    font = game.assets.font(44, True)
-    start = time.time()
-    duration = 4.5
-    extra_fx_time = 1.2
-    while game.running and time.time() - start < duration + extra_fx_time:
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                game.quit()
-                return
-        elapsed = time.time() - start
-        t = min(1.0, elapsed / duration)
-        game.screen.blit(bg1, (0, 0))
-        # Wind lines fade and animate
+    if effect == "air_circuits":
         for i in range(16):
-            x1 = int(SCREEN_WIDTH * (i+1) / 17)
+            x1 = int(SCREEN_WIDTH * (i + 1) / 17)
             y1 = int(SCREEN_HEIGHT * 0.2 + 20 * math.sin(elapsed * 2 + i))
-            y2 = int(SCREEN_HEIGHT * (0.2 + 0.5 * (1-t)))
-            pygame.draw.line(game.screen, (180, 220, 255), (x1, y1), (x1, y2), 3)
-        # Electric arcs (more, animated)
+            y2 = int(SCREEN_HEIGHT * (0.2 + 0.5 * (1 - t)))
+            pygame.draw.line(screen, (180, 220, 255), (x1, y1), (x1, y2), 3)
         for i in range(14):
-            points = [(int(SCREEN_WIDTH * (i+1) / 15), int(SCREEN_HEIGHT * 0.7))]
+            points = [(int(SCREEN_WIDTH * (i + 1) / 15), int(SCREEN_HEIGHT * 0.7))]
             for _ in range(6):
                 last = points[-1]
                 points.append((last[0] + random.randint(-20, 20), last[1] - random.randint(10, 30)))
-            pygame.draw.lines(game.screen, (80, 200, 255), False, points, 2)
-        # Fade in new bg
-        overlay = pygame.Surface(SCREEN_SIZE)
-        overlay.blit(bg2, (0, 0))
-        overlay.set_alpha(int(180 * t))
-        game.screen.blit(overlay, (0, 0))
-        # Dramatic electric shimmer at end
-        if t > 0.85:
-            shimmer_alpha = int(120 * (t-0.85)/0.15)
-            if shimmer_alpha > 0:
-                shimmer = pygame.Surface(SCREEN_SIZE, pygame.SRCALPHA)
-                for i in range(40):
-                    x = random.randint(0, SCREEN_WIDTH)
-                    y = random.randint(0, SCREEN_HEIGHT)
-                    pygame.draw.circle(shimmer, (80,200,255,shimmer_alpha), (x,y), random.randint(2,6))
-                game.screen.blit(shimmer, (0,0))
-        # Text
-        alpha = int(255 * t)
-        text = "Winds subside..."
-        render = font.render(text, True, WHITE)
-        render.set_alpha(alpha)
-        game.screen.blit(render, render.get_rect(center=(SCREEN_WIDTH//2, 120)))
-        text2 = "Electricity surges."
-        render2 = font.render(text2, True, WHITE)
-        render2.set_alpha(alpha)
-        game.screen.blit(render2, render2.get_rect(center=(SCREEN_WIDTH//2, 180)))
-        # Extra dramatic pause and shimmer after transition
-        if elapsed > duration:
-            shimmer_alpha = int(120 * (1 - (elapsed-duration)/extra_fx_time))
-            if shimmer_alpha > 0:
-                shimmer = pygame.Surface(SCREEN_SIZE, pygame.SRCALPHA)
-                for i in range(30):
-                    x = random.randint(0, SCREEN_WIDTH)
-                    y = random.randint(0, SCREEN_HEIGHT)
-                    pygame.draw.circle(shimmer, (80,200,255,shimmer_alpha), (x,y), random.randint(2,6))
-                game.screen.blit(shimmer, (0,0))
-        pygame.display.flip()
-        game.clock.tick(FPS)
-    game.pause_speedrun(False)
+            pygame.draw.lines(screen, (80, 200, 255), False, points, 2)
+        return
 
-def play_transition_8_to_9(game):
-    # Circuits to Echoes: electric fades, ghostly wisps
-    game.pause_speedrun(True)
-    game.stop_music()
-    game.sound.play_event("world_transition")
-    bg1 = game.assets.background(8)
-    bg2 = game.assets.background(9)
-    font = game.assets.font(44, True)
-    start = time.time()
-    duration = 4.5
-    extra_fx_time = 1.2
-    while game.running and time.time() - start < duration + extra_fx_time:
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                game.quit()
-                return
-        elapsed = time.time() - start
-        t = min(1.0, elapsed / duration)
-        game.screen.blit(bg1, (0, 0))
-        # Electric sparks fade and animate
+    if effect == "circuits_echoes":
         for i in range(40):
             sx = int(random.uniform(0, SCREEN_WIDTH))
             sy = int(random.uniform(0, SCREEN_HEIGHT))
             flicker = int(8 * math.sin(elapsed * 3 + i))
-            alpha = int(180 * (1-t))
-            pygame.draw.circle(game.screen, (80, 200, 255, alpha), (sx + flicker, sy), random.randint(2, 5))
-        # Ghostly wisps (more, animated)
+            alpha = int(180 * (1 - t))
+            pygame.draw.circle(screen, (80, 200, 255, alpha), (sx + flicker, sy), random.randint(2, 5))
         for i in range(18):
-            base_x = int(SCREEN_WIDTH * (i+1) / 19)
+            base_x = int(SCREEN_WIDTH * (i + 1) / 19)
             y = int(SCREEN_HEIGHT * (0.2 + 0.6 * t * random.random()))
             drift = int(10 * math.sin(elapsed * 2 + i))
-            pygame.draw.ellipse(game.screen, (200, 200, 255, 80), (base_x-20 + drift, y, 40, 16))
-        # Fade in new bg
-        overlay = pygame.Surface(SCREEN_SIZE)
-        overlay.blit(bg2, (0, 0))
-        overlay.set_alpha(int(180 * t))
-        game.screen.blit(overlay, (0, 0))
-        # Dramatic ghost shimmer at end
-        if t > 0.85:
-            shimmer_alpha = int(120 * (t-0.85)/0.15)
-            if shimmer_alpha > 0:
-                shimmer = pygame.Surface(SCREEN_SIZE, pygame.SRCALPHA)
-                for i in range(40):
-                    x = random.randint(0, SCREEN_WIDTH)
-                    y = random.randint(0, SCREEN_HEIGHT)
-                    pygame.draw.circle(shimmer, (200,200,255,shimmer_alpha), (x,y), random.randint(2,6))
-                game.screen.blit(shimmer, (0,0))
-        # Text
-        alpha = int(255 * t)
-        text = "Electricity fades..."
-        render = font.render(text, True, WHITE)
-        render.set_alpha(alpha)
-        game.screen.blit(render, render.get_rect(center=(SCREEN_WIDTH//2, 120)))
-        text2 = "Ghostly echoes appear."
-        render2 = font.render(text2, True, WHITE)
-        render2.set_alpha(alpha)
-        game.screen.blit(render2, render2.get_rect(center=(SCREEN_WIDTH//2, 180)))
-        # Extra dramatic pause and shimmer after transition
-        if elapsed > duration:
-            shimmer_alpha = int(120 * (1 - (elapsed-duration)/extra_fx_time))
-            if shimmer_alpha > 0:
-                shimmer = pygame.Surface(SCREEN_SIZE, pygame.SRCALPHA)
-                for i in range(30):
-                    x = random.randint(0, SCREEN_WIDTH)
-                    y = random.randint(0, SCREEN_HEIGHT)
-                    pygame.draw.circle(shimmer, (200,200,255,shimmer_alpha), (x,y), random.randint(2,6))
-                game.screen.blit(shimmer, (0,0))
-        pygame.display.flip()
-        game.clock.tick(FPS)
-    game.pause_speedrun(False)
+            pygame.draw.ellipse(screen, (200, 200, 255, 80), (base_x - 20 + drift, y, 40, 16))
+        return
 
 
-def flash_unlock_message(
-    screen: pygame.Surface,
-    clock: pygame.time.Clock,
-    assets: AssetCache,
-    text: str,
-    sound: Optional["SoundManager"] = None,
-) -> None:
-    font = assets.font(36, True)
-    if sound:
-        sound.play_event("portal_unlock")
-    for _ in range(60):
-        screen.fill((random.randint(0, 255), random.randint(0, 255), random.randint(0, 255)))
-        draw_center_text(screen, font, text, SCREEN_HEIGHT // 2, WHITE)
-        pygame.display.flip()
-        clock.tick(FPS)
+def _default_transition_config(from_world: int, to_world: int) -> Dict[str, Any]:
+    subtitle = TOWER_NAMES[to_world - 1] if 1 <= to_world <= len(TOWER_NAMES) else ""
+    return {
+        "effect": "default",
+        "duration": 2.6,
+        "extra": 0.0,
+        "subtitle": subtitle,
+    }
 
 
+def play_world_transition(game: "Game", from_world: int, to_world: int) -> None:
+    if from_world == 9 and to_world == 10:
+        return
+
+    config = TRANSITION_CONFIGS.get((from_world, to_world), _default_transition_config(from_world, to_world))
+    effect = config.get("effect", "default")
+    duration = config.get("duration", 4.5)
+    extra_fx_time = config.get("extra", 1.2)
+    shimmer_color = config.get("shimmer", (200, 200, 255))
+    params = config.get("params", {})
+
+    game.pause_speedrun(True)
+    try:
+        game.stop_music()
+        game.sound.play_event("world_transition")
+        start = time.time()
+        font = game.assets.font(44, True)
+        subtitle_font = game.assets.font(24, False)
+
+        bg1 = game.assets.background(from_world) if effect != "default" else None
+        bg2 = game.assets.background(to_world) if effect != "default" else None
+        title_font = game.assets.font(44, True)
+
+        while game.running and time.time() - start < duration + extra_fx_time:
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    game.quit()
+                    return
+            elapsed = time.time() - start
+            t = min(1.0, elapsed / duration) if duration > 0 else 1.0
+
+            if effect == "default":
+                half = duration / 2 if duration > 0 else 1.0
+                new_color = BG_COLORS[min(to_world - 1, len(BG_COLORS) - 1)]
+                game.screen.fill((0, 0, 0))
+                overlay = pygame.Surface(SCREEN_SIZE)
+                overlay.fill(new_color)
+                overlay.set_alpha(120)
+                game.screen.blit(overlay, (0, 0))
+                if elapsed < half:
+                    alpha = int(min(1.0, elapsed / (half * 0.7)) * 255)
+                    text = f"World {from_world} Complete"
+                    render = title_font.render(text, True, WHITE)
+                    render.set_alpha(alpha)
+                    game.screen.blit(render, render.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 - 20)))
+                else:
+                    alpha = int(min(1.0, (elapsed - half) / (half * 0.7)) * 255)
+                    text = f"Entering World {to_world}"
+                    render = title_font.render(text, True, WHITE)
+                    render.set_alpha(alpha)
+                    game.screen.blit(render, render.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 - 20)))
+                    subtitle = config.get("subtitle")
+                    if subtitle:
+                        sub = subtitle_font.render(subtitle, True, WHITE)
+                        sub.set_alpha(alpha)
+                        game.screen.blit(sub, sub.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 30)))
+                pygame.display.flip()
+                game.clock.tick(FPS)
+                continue
+
+            if bg1:
+                game.screen.blit(bg1, (0, 0))
+            if bg2:
+                overlay = pygame.Surface(SCREEN_SIZE)
+                overlay.blit(bg2, (0, 0))
+                overlay.set_alpha(int(180 * t))
+                game.screen.blit(overlay, (0, 0))
+
+            _draw_transition_effect(game, effect, t, elapsed, params)
+
+            if t > 0.85:
+                shimmer_alpha = int(120 * (t - 0.85) / 0.15)
+                _draw_transition_shimmer(game.screen, shimmer_color, shimmer_alpha, 40)
+
+            alpha = int(255 * t)
+            text = config.get("text1", "")
+            text2 = config.get("text2", "")
+            if text:
+                render = font.render(text, True, WHITE)
+                render.set_alpha(alpha)
+                game.screen.blit(render, render.get_rect(center=(SCREEN_WIDTH // 2, 120)))
+            if text2:
+                render2 = font.render(text2, True, WHITE)
+                render2.set_alpha(alpha)
+                game.screen.blit(render2, render2.get_rect(center=(SCREEN_WIDTH // 2, 180)))
+
+            if elapsed > duration and extra_fx_time > 0:
+                shimmer_alpha = int(120 * (1 - (elapsed - duration) / extra_fx_time))
+                _draw_transition_shimmer(game.screen, shimmer_color, shimmer_alpha, 30)
+
+            pygame.display.flip()
+            game.clock.tick(FPS)
+    finally:
+        game.pause_speedrun(False)
 # ---------------------------------------------------------------------------
 # Level entities
 # ---------------------------------------------------------------------------
-
-
-
-# Utility to list available character folders
-def list_character_folders():
-    char_dir = ASSET_DIR / "characters"
-    if not char_dir.exists():
-        return []
-    return [f.name for f in char_dir.iterdir() if f.is_dir()]
 
 
 # === Entities: player / platforms / enemies / bosses / objects ===
@@ -3415,51 +2860,6 @@ class BlinkingPlatform(Platform):
         self.move_vector = pygame.Vector2(0, 0)
 
 
-class PathPlatform(Platform):
-    """A platform that moves along a predefined path."""
-
-    def __init__(
-        self,
-        x: int,
-        y: int,
-        width: int,
-        height: int,
-        world_num: int,
-        asset_cache: AssetCache,
-        *,
-        path: List[Tuple[int, int]],
-        speed: float = 2.0,
-    ):
-        super().__init__(x, y, width, height, world_num, asset_cache)
-        self.path = [pygame.Vector2(p) for p in path] if path else []
-        self.speed = speed
-        self.target_index = 1 if len(self.path) > 1 else 0
-        self.pos = pygame.Vector2(self.rect.center)
-        self.move_vector = pygame.Vector2(0, 0)
-
-    def update(self) -> None:
-        self.prev_rect = self.rect.copy()
-        if len(self.path) < 2:
-            self.move_vector = pygame.Vector2(0, 0)
-            return
-
-        target = self.path[self.target_index]
-        direction = target - self.pos
-        distance = direction.length()
-
-        if distance < self.speed:
-            self.pos = target
-            self.target_index = (self.target_index + 1) % len(self.path)
-        else:
-            self.pos += direction.normalize() * self.speed
-
-        new_center = (int(self.pos.x), int(self.pos.y))
-        move_x = new_center[0] - self.rect.centerx
-        move_y = new_center[1] - self.rect.centery
-        self.rect.center = new_center
-        self.move_vector = pygame.Vector2(move_x, move_y)
-
-
 class Coin(pygame.sprite.Sprite):
     effect = "collect"
 
@@ -3622,49 +3022,6 @@ def create_enemy(x, y, world, speed=2, assets=None):
         self.rect.x += self.speed
         if self.rect.left < 0 or self.rect.right > SCREEN_WIDTH:
             self.speed *= -1
-
-
-class Portal(pygame.sprite.Sprite):
-    def __init__(self, x, y):
-        super().__init__()
-        # (Removed) self.image = load_object_image("portal_placeholder.png")
-        self.rect = pygame.Rect(x - 32, y - 32, 64, 64)
-
-    def _variant(self) -> str:
-        if self.portal_type == "boss":
-            return "boss_active" if self.active else "boss_locked"
-        return "normal"
-
-    def set_active(self, active: bool) -> None:
-        if self.portal_type != "boss":
-            return
-        if self.active == active:
-            return
-        self.active = active
-        self.image = self.assets.portal_texture(self.world, self._variant())
-        self.base_image = self.image.copy()
-        self.rect = self.image.get_rect(center=self.rect.center)
-
-    def update(self, dt: float = 1 / FPS) -> None:
-        self._anim_timer += dt
-        angle = (self._anim_timer * 40.0) % 360
-        pulse = 1.0 + 0.08 * math.sin(self._anim_timer * 6.0)
-        new_image = pygame.transform.rotozoom(self.base_image, angle, pulse)
-        center = self.rect.center
-        electric = new_image.copy()
-        arc_surface = pygame.Surface(electric.get_size(), pygame.SRCALPHA)
-        arc_count = 3
-        for _ in range(arc_count):
-            x1 = random.randint(0, arc_surface.get_width() - 1)
-            y1 = random.randint(0, arc_surface.get_height() - 1)
-            x2 = x1 + random.randint(-24, 24)
-            y2 = y1 + random.randint(-24, 24)
-            r, g, b = self.lightning_color
-            color = (r, g, b, random.randint(140, 230))
-            pygame.draw.line(arc_surface, color, (x1, y1), (x2, y2), width=2)
-        electric.blit(arc_surface, (0, 0), special_flags=pygame.BLEND_ADD)
-        self.image = electric
-        self.rect = self.image.get_rect(center=center)
 
 
 class Boss(pygame.sprite.Sprite):
@@ -5258,6 +4615,82 @@ def _draw_glitch_overlay(surface: pygame.Surface) -> None:
 
 
 # === Menus / cutscenes ===
+
+
+def _music_tracks() -> list[str]:
+    if not MUSIC_DIR.exists():
+        return []
+    tracks = [p.name for p in MUSIC_DIR.iterdir() if p.is_file() and p.suffix.lower() == ".mp3"]
+    preferred = [
+        *[f"world{i}.mp3" for i in range(1, 11)],
+        "credits.mp3",
+        "title_theme.mp3",
+    ]
+    lower_map = {t.lower(): t for t in tracks}
+    ordered = [lower_map[name.lower()] for name in preferred if name.lower() in lower_map]
+    remaining = [t for t in tracks if t not in ordered]
+    return ordered + sorted(remaining)
+
+
+def run_music_player_menu(game: "Game") -> None:
+    tracks = _music_tracks()
+
+    def set_override(track: str) -> None:
+        game.music_override = track
+        try:
+            game.settings.set("music", True)
+        except Exception:
+            pass
+        game.play_music(track)
+
+    entries = []
+    if tracks:
+        for track in tracks:
+            entries.append(MenuEntry(lambda t=track: t, lambda t=track: set_override(t)))
+    else:
+        entries.append(MenuEntry(lambda: "(No .mp3 files found)", lambda: None, enabled=False))
+
+    entries.append(MenuEntry(lambda: "Back", lambda: "exit"))
+
+    menu = VerticalMenu(entries, sound=game.sound)
+    menu.spacing_multiplier = 1.5
+
+    key_map = game.settings.data if hasattr(game.settings, 'data') else game.settings
+    back_keys = set([
+        key_map.get("back", pygame.K_ESCAPE),
+        key_map.get("pause", pygame.K_ESCAPE),
+        pygame.K_ESCAPE,
+        pygame.K_BACKSPACE,
+    ])
+    controller_back = game.settings["controller_map"].get("back", 1) if hasattr(game.settings, '__getitem__') else 1
+
+    while game.running:
+        game._poll_controller()
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                game.quit()
+                return
+            if event.type == pygame.KEYDOWN and event.key in back_keys:
+                pygame.event.clear((pygame.KEYDOWN, pygame.KEYUP))
+                return
+            if event.type == pygame.JOYBUTTONDOWN and event.button == controller_back:
+                return
+            result = menu.handle_event(event)
+            if result == "exit":
+                pygame.event.clear((pygame.KEYDOWN, pygame.KEYUP))
+                return
+
+        game.screen.fill((0, 0, 0))
+        if game.settings["glitch_fx"]:
+            _draw_glitch_overlay(game.screen)
+        title_font = game.assets.font(50, True)
+        draw_glitch_text(game.screen, title_font, "MUSIC PLAYER", 140, WHITE, game.settings["glitch_fx"])
+        menu_y = 240
+        menu.draw(game.screen, game.assets, menu_y, game.settings["glitch_fx"])
+        pygame.display.flip()
+        game.clock.tick(FPS)
+
+
 def run_settings_menu(game: "Game", title: str = "SETTINGS") -> None:
     def toggle_music() -> None:
         enabled = game.settings.toggle("music")
@@ -5294,6 +4727,10 @@ def run_settings_menu(game: "Game", title: str = "SETTINGS") -> None:
                 toggle_music,
             ),
             MenuEntry(
+                lambda: "Music Player",
+                lambda: run_music_player_menu(game),
+            ),
+            MenuEntry(
                 lambda: f"Sound FX: {'On' if game.settings['sfx'] else 'Off'}",
                 toggle_sfx,
             ),
@@ -5314,7 +4751,8 @@ def run_settings_menu(game: "Game", title: str = "SETTINGS") -> None:
     back_keys = set([
         key_map.get("back", pygame.K_ESCAPE),
         key_map.get("pause", pygame.K_ESCAPE),
-        pygame.K_ESCAPE
+        pygame.K_ESCAPE,
+        pygame.K_BACKSPACE
     ])
     while game.running:
         # Poll controller so menu navigation works on gamepads even outside the main loop
@@ -5378,6 +4816,7 @@ def run_pause_menu(scene: "GameplayScene") -> str:
         [
             MenuEntry(lambda: "Resume", resume),
             MenuEntry(lambda: "Settings", lambda: open_settings()),
+            MenuEntry(lambda: "Music Player", lambda: run_music_player_menu(scene.game)),
             MenuEntry(lambda: "Shops", open_shops),
             MenuEntry(lambda: "Main Menu", to_menu),
             MenuEntry(lambda: "Quit Game", quit_game),
@@ -5432,7 +4871,7 @@ def run_pause_menu(scene: "GameplayScene") -> str:
         menu.draw(
             scene.game.screen,
             scene.game.assets,
-            SCREEN_HEIGHT // 2 + 40,
+            SCREEN_HEIGHT // 2 + 10,
             scene.game.settings["glitch_fx"],
         )
         if scene.game.settings["glitch_fx"]:
@@ -5836,39 +5275,6 @@ class WorldRule:
 
 class LevelGenerator:
 
-    def generate_from_dict(self, data: dict) -> LevelContent:
-        # Create a LevelContent from editor JSON data
-        content = LevelContent()
-        # Platforms
-        for plat in data.get("platforms", []):
-            x, y, w, h = plat["x"], plat["y"], plat["w"], plat["h"]
-            p = Platform(x, y, w, h, world=1, assets=self.assets)
-            content.platforms.add(p)
-        # Enemies
-        for enemy in data.get("enemies", []):
-            x, y, w, h = enemy["x"], enemy["y"], enemy["w"], enemy["h"]
-            # Use create_enemy for world-specific enemy
-            e = create_enemy(x, y, 1, speed=2, assets=self.assets)
-            content.enemies.add(e)
-        # Specials (objects)
-        for obj in data.get("specials", []):
-            x, y, w, h = obj["x"], obj["y"], obj["w"], obj["h"]
-            s = SpecialTile(x, y, w, h, world_num=1, asset_cache=self.assets)
-            content.specials.add(s)
-        # Goal
-        if data.get("goal"):
-            g = data["goal"]
-            content.goal = Goal(g["x"], g["y"], world=1, assets=self.assets)
-        # Boss
-        if data.get("boss"):
-            b = data["boss"]
-            content.boss = Boss(b["x"], b["y"], world=1, assets=self.assets)
-        # Bounds
-        content.min_x = min((p.x for p in content.platforms), default=0)
-        content.max_x = max((p.x + p.width for p in content.platforms), default=SCREEN_WIDTH)
-        content.min_y = min((p.y for p in content.platforms), default=0)
-        content.max_y = max((p.y + p.height for p in content.platforms), default=SCREEN_HEIGHT)
-        return content
     """Procedural parkour generator with deterministic, scalable difficulty."""
 
     WORLD_RULES: Dict[int, WorldRule] = {
@@ -6590,7 +5996,7 @@ class CreditScene(Scene):
                 self.game.last_input_device = "keyboard"
                 key_map = self.game.settings["key_map"]
                 accept_key = key_map.get("accept", pygame.K_RETURN)
-                if event.key in (accept_key, pygame.K_SPACE, pygame.K_ESCAPE):
+                if event.key in (accept_key, pygame.K_SPACE, pygame.K_ESCAPE, pygame.K_BACKSPACE):
                     self.game._suppress_accept_until = time.time() + 0.5
                     self.game.change_scene(TitleScene)
             elif event.type == pygame.MOUSEBUTTONDOWN:
@@ -6654,9 +6060,6 @@ class CharacterCreationScene(Scene):
         wheel_center = (SCREEN_WIDTH // 2 + 220, SCREEN_HEIGHT // 2 - 40)
         self.wheel_rect = self.wheel_surface.get_rect(center=wheel_center)
         self.selection_pos = self._pos_from_color(self.selected_color)
-        self.confirm_rect = pygame.Rect(0, 0, 220, 56)
-        self.back_rect = pygame.Rect(0, 0, 180, 48)
-        # Button rectangles (size + position)
         self.confirm_rect = pygame.Rect(0, 0, 220, 56)
         self.back_rect = pygame.Rect(0, 0, 180, 48)
 
@@ -7347,9 +6750,6 @@ class TitleScene(Scene):
     def open_settings(self) -> None:
         run_settings_menu(self.game)
 
-    def open_level_editor(self) -> None:
-        # Disabled: Level editor is not accessible from the title screen
-        pass
     def open_cosmetics_shop(self) -> None:
         from main import CosmeticsShopScene
         self.game.sound.play_event("menu_confirm")
@@ -7572,7 +6972,7 @@ class LevelSelectScene(Scene):
         if event.type == pygame.QUIT:
             self.game.quit()
         if event.type == pygame.KEYDOWN:
-            if event.key == pygame.K_ESCAPE:
+            if event.key in (pygame.K_ESCAPE, pygame.K_BACKSPACE):
                 self.game.change_scene(TitleScene)
             elif event.key == pygame.K_RETURN:
                 if self.world == self.boss_world:
@@ -7916,7 +7316,7 @@ class CosmeticsShopScene(Scene):
     def handle_event(self, event: pygame.event.Event) -> None:
         if event.type == pygame.QUIT:
             self.game.quit()
-        elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+        elif event.type == pygame.KEYDOWN and event.key in (pygame.K_ESCAPE, pygame.K_BACKSPACE):
             pause_scene = getattr(self.game, "_pause_return_scene", None) or self.return_scene
             if pause_scene:
                 self.game._pause_menu_ignore_back_once = True
@@ -8154,7 +7554,7 @@ class SkillsShopScene(Scene):
     def handle_event(self, event: pygame.event.Event) -> None:
         if event.type == pygame.QUIT:
             self.game.quit()
-        elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+        elif event.type == pygame.KEYDOWN and event.key in (pygame.K_ESCAPE, pygame.K_BACKSPACE):
             pause_scene = getattr(self.game, "_pause_return_scene", None)
             if pause_scene:
                 action = run_pause_menu(pause_scene)
@@ -8266,7 +7666,7 @@ class ShopsHubScene(Scene):
     def handle_event(self, event: pygame.event.Event) -> None:
         if event.type == pygame.QUIT:
             self.game.quit()
-        elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+        elif event.type == pygame.KEYDOWN and event.key in (pygame.K_ESCAPE, pygame.K_BACKSPACE):
             if self.return_scene:
                 action = run_pause_menu(self.return_scene)
                 if action == "menu":
@@ -8335,298 +7735,17 @@ class GameplayScene(Scene):
                 if hasattr(self.player, "enable_flight"):
                     self.player.enable_flight()
         # ...existing code...
-    def enable_level_editing(self):
-        if hasattr(self, '_level_editor_enabled') and self._level_editor_enabled:
-            return
-        self._level_editor_enabled = True
-        self._level_editor_hide_ui = True
-        self._level_editor_flight = True
-        if hasattr(self.player, 'enable_flight'):
-            self.player.enable_flight()
-        self._level_editor_saved = False
-
-    def disable_level_editing(self):
-        self._level_editor_enabled = False
-        self._level_editor_hide_ui = False
-        self._level_editor_flight = False
-        if hasattr(self.player, 'disable_flight'):
-            self.player.disable_flight()
-    def draw_level_editor_toolbox(self, surface):
-        # Toolbox at bottom center, icon-only, no names
-        object_types = [
-            ("cursor", (255, 255, 255), "cursor.png"),
-            ("platform", (180, 180, 180), "platform.png"),
-            ("coin", (255, 220, 60), "coin.png"),
-            ("spike", (220, 80, 80), "spike.png"),
-            ("boost", (255, 200, 60), "boost.png"),
-            ("spring", (180, 255, 180), "spring.png"),
-            ("wind_orb", (80, 200, 255), "wind_orb.png"),
-            ("icicle", (200, 220, 255), "icicle.png"),
-            ("electric_tile", (100, 100, 255), "electric_tile.png"),
-            ("ghost_orb", (150, 150, 200), "ghost_orb.png"),
-            ("checkpoint", (100, 220, 255), "checkpoint.png"),
-        ]
-        icon_size = 48
-        spacing = 18
-        total_width = len(object_types) * (icon_size + spacing) + spacing
-        screen_w = surface.get_width()
-        y = surface.get_height() - icon_size - 24
-        x_start = (screen_w - total_width) // 2 + spacing
-        # Store clickable rects for mouse interaction
-        if not hasattr(self, '_toolbox_rects'):
-            self._toolbox_rects = []
-        self._toolbox_rects.clear()
-        # Draw toolbox background bar
-        bar_rect = pygame.Rect(x_start - spacing, y - 12, total_width, icon_size + 24)
-        shadow = pygame.Surface((bar_rect.width + 8, bar_rect.height + 8), pygame.SRCALPHA)
-        pygame.draw.rect(shadow, (0,0,0,80), shadow.get_rect(), border_radius=18)
-        surface.blit(shadow, (bar_rect.x + 4, bar_rect.y + 4))
-        pygame.draw.rect(surface, (38, 44, 60), bar_rect, border_radius=18)
-        # Draw each tool icon
-        for idx, (obj_type, color, icon_file) in enumerate(object_types):
-            x = x_start + idx * (icon_size + spacing)
-            rect = pygame.Rect(x, y, icon_size, icon_size)
-            self._toolbox_rects.append((rect, obj_type))
-            is_selected = getattr(self, '_level_editor_selected_tool', 'platform') == obj_type
-            # Button background
-            pygame.draw.rect(surface, (60, 70, 100) if is_selected else (48, 54, 74), rect, border_radius=12)
-            if is_selected:
-                pygame.draw.rect(surface, (110, 170, 255), rect, 3, border_radius=12)
-            # Icon
-            icon = None
-            try:
-                icon = pygame.image.load(str(OBJECT_DIR / icon_file)).convert_alpha()
-                icon = pygame.transform.smoothscale(icon, (36, 36))
-            except Exception:
-                pass
-            icon_rect = pygame.Rect(rect.x + 6, rect.y + 6, 36, 36)
-            if icon:
-                surface.blit(icon, icon_rect)
-            else:
-                pygame.draw.rect(surface, color, icon_rect, border_radius=8)
-    def handle_level_editor_mouse(self, event):
-        # Handle mouse clicks for toolbox selection and object placement/deletion
-        if not hasattr(event, 'pos'):
-            return
-        mouse_pos = event.pos
-        # Toolbox selection (always on left click)
-        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            for rect, obj_type in getattr(self, '_toolbox_rects', []):
-                if rect.collidepoint(mouse_pos):
-                    self._level_editor_selected_tool = obj_type
-                    return
-        # If cursor tool is selected, enable drag/move only (no placement)
-        if getattr(self, '_level_editor_selected_tool', 'platform') == 'cursor':
-            return
-        # Place object (left click, not on toolbox)
-        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            for rect, obj_type in getattr(self, '_toolbox_rects', []):
-                if rect.collidepoint(mouse_pos):
-                    return  # Don't place if clicking toolbox
-            self.place_level_editor_object(mouse_pos)
-        # Delete object (right click, not on toolbox)
-        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 3:
-            for rect, obj_type in getattr(self, '_toolbox_rects', []):
-                if rect.collidepoint(mouse_pos):
-                    return  # Don't delete if clicking toolbox
-            self.delete_level_editor_object(mouse_pos)
-
-    def place_level_editor_object(self, pos):
-        # Place the selected object at the given position
-        tool = getattr(self, '_level_editor_selected_tool', 'platform')
-        x, y = pos
-        if tool == 'platform':
-            rect = pygame.Rect(x-50, y-10, 100, 20)
-            self.content.platforms.add(Platform(rect.x, rect.y, rect.width, rect.height, self.world, self.game.assets))
-        elif tool == 'coin':
-            self.content.coins.add(Coin(x, y))
-        elif tool == 'spike':
-            # Use correct direction and world if needed
-            self.content.specials.add(Spike(x, y, direction="up", world=self.world))
-        elif tool == 'boost':
-            self.content.specials.add(Boost(x, y))
-        elif tool == 'spring':
-            self.content.specials.add(Spring(x, y))
-        elif tool == 'wind_orb':
-            self.content.specials.add(WindOrb(x, y))
-        elif tool == 'icicle':
-            self.content.specials.add(Icicle(x, y))
-        elif tool == 'electric_tile':
-            self.content.specials.add(ElectricTile(x, y))
-        elif tool == 'ghost_orb':
-            self.content.specials.add(GhostOrb(x, y))
-        elif tool == 'checkpoint':
-            self.content.specials.add(Checkpoint(x, y))
-
-    def delete_level_editor_object(self, pos):
-        # Delete the object under the cursor (platform, coin, or special)
-        x, y = pos
-        # Check platforms
-        for plat in list(self.content.platforms):
-            if plat.rect.collidepoint(x, y):
-                self.content.platforms.remove(plat)
-                return
-        # Check coins
-        for coin in list(self.content.coins):
-            if coin.rect.collidepoint(x, y):
-                self.content.coins.remove(coin)
-                return
-        # Check specials
-        for special in list(self.content.specials):
-            if special.rect.collidepoint(x, y):
-                self.content.specials.remove(special)
-                return
-
-    def draw_level_editor_controls(self, surface):
-        # Draw controls overlay at the top left
-        font = pygame.font.SysFont("consolas", 18)
-        controls = [
-            "LMB Select Tool",
-            "LMB Add Object",
-            "RMB Delete Object",
-            "Ctrl+S Save",
-            "Esc Exit Editor (revert if not saved)",
-            "P Playtest/Return",
-            "WASD/Arrows Pan Camera",
-            "Mouse Move/Select/Drag"
-        ]
-        y = 10
-        for ctrl in controls:
-            draw_prompt_with_icons(surface, font, ctrl, y + font.get_height() // 2, (255, 255, 255), device="keyboard", x=18)
-            y += font.get_height() + 4
-    def enable_level_editing(self):
-        if hasattr(self, '_level_editor_enabled') and self._level_editor_enabled:
-            return
-        self._level_editor_enabled = True
-        self._level_editor_hide_ui = True
-        self._level_editor_flight = True
-        self._level_editor_saved = False
-        # Save a deep copy of the current level state for revert
-        import copy
-        self._level_editor_backup = copy.deepcopy(self.content)
-        if hasattr(self.player, 'enable_flight'):
-            self.player.enable_flight()
-
-    def disable_level_editing(self, revert=False):
-        self._level_editor_enabled = False
-        self._level_editor_hide_ui = False
-        self._level_editor_flight = False
-        if revert and hasattr(self, '_level_editor_backup'):
-            self.content = self._level_editor_backup
-            self._level_editor_backup = None
-        if hasattr(self.player, 'disable_flight'):
-            self.player.disable_flight()
-        # --- Respawn all coins when exiting editor ---
-        if not revert:
-            self._respawn_all_coins()
-        # Only save to .lvl file if editor was closed with Ctrl+S (not on revert or playtest exit)
-        if getattr(self, '_level_editor_saved', False):
-            self._level_editor_saved = False  # Reset flag after saving
-            if hasattr(self, 'save_level'):
-                self.save_level()
-
-    def _respawn_all_coins(self):
-        """Respawn all coins to their original positions from the level file."""
-        # Only run if not in editor or playtest
-        path = getattr(self, 'level_path', None)
-        if not path or not hasattr(self, 'content'):
-            return
-        # Persistence removed; nothing to reload
     def handle_event(self, event: pygame.event.Event) -> None:
         # ...existing code...
-        if hasattr(self, '_level_editor_enabled') and self._level_editor_enabled:
-            self.handle_level_editor_mouse(event)
-            if event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_f:
-                    # Toggle flight
-                    if hasattr(self.player, 'can_fly') and self.player.can_fly:
-                        self.player.disable_flight()
-                    else:
-                        self.player.enable_flight()
-                elif event.key == pygame.K_s and pygame.key.get_mods() & pygame.KMOD_CTRL:
-                    # Save and exit edit mode
-                    self.save_level() if hasattr(self, 'save_level') else None
-                    self._level_editor_saved = True
-                    self.disable_level_editing(revert=False)
-                elif event.key == pygame.K_ESCAPE:
-                    # Exit and revert if not saved
-                    self.disable_level_editing(revert=not getattr(self, '_level_editor_saved', False))
-                elif event.key == pygame.K_p:
-                    # Enter playtest mode
-                    self._level_editor_playtest = True
-                    if hasattr(self.player, 'disable_flight'):
-                        self.player.disable_flight()
-            return
-        if hasattr(self, '_level_editor_playtest') and self._level_editor_playtest:
-            if event.type == pygame.KEYDOWN and event.key == pygame.K_p:
-                # Return to editor mode
-                self._level_editor_playtest = False
-                if hasattr(self.player, 'enable_flight'):
-                    self.player.enable_flight()
-            return
-        # ...existing code...
+        pass
     def update(self, dt: float) -> None:
         # Ensure flight cheat is always applied if enabled
         if hasattr(self.game, "flight_cheat_enabled") and self.game.flight_cheat_enabled:
             if hasattr(self.player, "can_fly") and not self.player.can_fly:
                 if hasattr(self.player, "enable_flight"):
                     self.player.enable_flight()
-        # If in playtest mode, check for reaching portal
-        if hasattr(self, '_level_editor_playtest') and self._level_editor_playtest:
-            if self.content.goal and self.player.rect.colliderect(self.content.goal.rect):
-                self._level_editor_playtest = False
-                if hasattr(self.player, 'enable_flight'):
-                    self.player.enable_flight()
         # ...existing code...
-    def enable_level_editing(self):
-        # Attach a LevelEditorScene-like editor to this scene for in-place editing
-        if hasattr(self, '_level_editor_enabled') and self._level_editor_enabled:
-            return  # Already enabled
-        self._level_editor_enabled = True
-        # Add editor state/logic as needed (e.g., toggles, UI, object manipulation)
-        # You may want to expose editor controls in handle_event, update, and draw
-        # For now, just set the flag; you can expand this with full editor logic
     @classmethod
-    def from_custom_level(cls, game, path):
-        # Load level data from custom file and spawn at the editor's spawn_point
-        with open(path, "r") as f:
-            data = json.load(f)
-        # Use world 1 by default for custom levels, or infer from background if needed
-        world = 1
-        background = data.get("background", "grass")
-        world_map = {
-            "grass": 1, "cave": 2, "desert": 3, "forest": 4, "snow": 5,
-            "flame": 6, "sky": 7, "circuit": 8, "temple": 9, "glitch": 10,
-        }
-        world = world_map.get(background, 1)
-        # Level number is arbitrary for custom
-        level = 1
-        scene = cls(game, world, level)
-        # Overwrite content with custom data
-        scene.content = game.level_generator.generate_from_dict(data)
-        # Set player spawn to the custom spawn_point
-        spawn = tuple(data.get("spawn_point", (100, 450)))
-        # Load character from settings
-        settings_mgr = SettingsManager(SETTINGS_FILE)
-        character_name = settings_mgr.data.get("character", "player")
-        outfit_form = game.active_outfit_form()
-        player_color = game.active_outfit_color()
-        if outfit_form:
-            player_color = None
-        scene.player = Player(
-            spawn,
-            game.sound,
-            color=player_color,
-            character_name=character_name,
-            form_name=outfit_form,
-        )
-        scene._apply_player_skills()
-        scene.trail_style = game.active_trail_style()
-        scene.trail_color = scene.trail_style["color"] if scene.trail_style else None
-        scene._player_trail = []
-        scene._snap_camera_to_player()
-        return scene
-
     def _apply_player_skills(self) -> None:
         """Sync unlocked skills to the active player instance (movement + health)."""
         if not hasattr(self, "player"):
@@ -8742,28 +7861,11 @@ class GameplayScene(Scene):
             self.game.world1_intro_shown = True
 
     def handle_event(self, event: pygame.event.Event) -> None:
-        if hasattr(self, '_level_editor_enabled') and self._level_editor_enabled:
-            # Editor mode: block all normal UI, handle only editor controls
-            self.handle_level_editor_mouse(event)
-            if event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_f:
-                    # Toggle flight
-                    if hasattr(self.player, 'can_fly') and self.player.can_fly:
-                        self.player.disable_flight()
-                    else:
-                        self.player.enable_flight()
-                elif event.key == pygame.K_s and pygame.key.get_mods() & pygame.KMOD_CTRL:
-                    # Save and exit edit mode
-                    self.save_level() if hasattr(self, 'save_level') else None
-                    self.disable_level_editing()
-                # Block all other keys from normal game UI
-            # Block all other UI events
-            return
         # ...existing code...
         if event.type == pygame.QUIT:
             self.game.quit()
         elif event.type == pygame.KEYDOWN:
-            if event.key == pygame.K_ESCAPE:
+            if event.key in (pygame.K_ESCAPE, pygame.K_BACKSPACE):
                 action = run_pause_menu(self)
                 if action == "menu":
                     self.game.change_scene(TitleScene)
@@ -9170,11 +8272,6 @@ class GameplayScene(Scene):
         self._draw_hat(surface, self.player.rect, offset=(-self.camera_x, -self.camera_y))
 
         # Draw only editor UI if in edit mode
-        if hasattr(self, '_level_editor_enabled') and self._level_editor_enabled:
-            self.draw_level_editor_toolbox(surface)
-            self.draw_level_editor_controls(surface)
-            return
-
         # ...existing UI overlays, coin counter, etc...
         font = self.game.assets.font(28, True)
         coin_text = f"Coins: {getattr(self, 'coins_collected_count', 0)}"
@@ -9321,7 +8418,7 @@ class BossArenaScene(Scene):
         if event.type == pygame.QUIT:
             self.game.quit()
         elif event.type == pygame.KEYDOWN:
-            if event.key == pygame.K_ESCAPE:
+            if event.key in (pygame.K_ESCAPE, pygame.K_BACKSPACE):
                 action = run_pause_menu(self)
                 if action == "menu":
                     self.game.change_scene(TitleScene)
@@ -10317,149 +9414,6 @@ class BossArenaScene(Scene):
         self.explosion_particles = remaining
 
 
-class VictoryScene(Scene):
-    def __init__(self, game: "Game"):
-        super().__init__(game)
-        self.blink = 0
-
-    def on_enter(self) -> None:
-        self.game.play_music("credits.mp3")
-
-    def handle_event(self, event: pygame.event.Event) -> None:
-        if event.type == pygame.QUIT:
-            self.game.quit()
-        elif event.type == pygame.KEYDOWN and event.key == pygame.K_RETURN:
-            self.game.change_scene(TitleScene)
-
-    def update(self, dt: float) -> None:
-        self.blink = (self.blink + 1) % 60
-
-    def draw(self, surface: pygame.Surface) -> None:
-        w, h = surface.get_size()
-        temp = pygame.Surface((w, h)).convert()
-        temp.fill((0,0,0))
-
-        font_big = self.game.assets.font(40, True)
-        font_mid = self.game.assets.font(30, True)
-        font_small = self.game.assets.font(22, False)
-
-        draw_center_text(temp, font_big, "REALITY HAS COLLAPSED", 250, WHITE)
-        draw_center_text(temp, font_mid, "YOU WIN", 320, WHITE)
-        draw_prompt_with_icons(temp, font_small, "Press ENTER to return to Main Menu", 450, WHITE, device=getattr(self.game, "last_input_device", "keyboard"))
-
-
-        # Use only level 8 glitches from CreditsScene for performance and style
-        if getattr(self.game.settings, '__getitem__', None) and self.game.settings["glitch_fx"]:
-            # Level 8: vortex, blackhole, heavy slices/rgb/flash
-            self.glitch_vortex(temp)
-            self.glitch_blackhole(temp)
-            self.glitch_slices(temp, 8, 35)
-            self.glitch_rgb_split(temp, 12)
-            self.glitch_flash(temp)
-
-        surface.blit(temp, (0,0))
-
-    # --- Glitch helpers (copied from CreditsScene) ---
-    def glitch_static(self, surf, amount=80):
-        noise = pygame.Surface(surf.get_size(), pygame.SRCALPHA)
-        arr = pygame.surfarray.pixels_alpha(noise)
-        arr[:, :] = np.random.randint(0, 256, arr.shape, dtype=arr.dtype)
-        del arr
-        noise.set_alpha(random.randint(30, 70))
-        surf.blit(noise, (0,0), special_flags=pygame.BLEND_SUB)
-
-    def glitch_scanlines(self, surf):
-        w, h = surf.get_size()
-        scan = pygame.Surface((w, h), pygame.SRCALPHA)
-        for y in range(0, h, 4):
-            pygame.draw.line(scan, (0,0,0, random.randint(40,90)), (0,y), (w,y), 1)
-        surf.blit(scan, (0,0))
-
-    def glitch_screen_shake(self, surf):
-        ox = random.randint(-3, 3)
-        oy = random.randint(-3, 3)
-        temp = surf.copy()
-        surf.blit(temp, (ox, oy))
-
-    def glitch_vhs(self, surf):
-        w, h = surf.get_size()
-        for _ in range(4):
-            y = random.randint(0, h-1)
-            bar_height = 2
-            if y + bar_height > h:
-                bar_height = h - y
-            if bar_height <= 0:
-                continue
-            bar = surf.subsurface((0, y, w, bar_height)).copy()
-            sx = random.randint(-20, 20)
-            surf.blit(bar, (sx, y))
-
-    def glitch_meltdown(self, surf):
-        offset = math.sin(self.blink * 0.2) * 5
-        surf.scroll(dx=int(offset), dy=0)
-
-    def glitch_wireframe(self, surf):
-        w, h = surf.get_size()
-        wire = pygame.Surface((w, h), pygame.SRCALPHA)
-        for y in range(0, h, 50):
-            pygame.draw.line(wire, (80,80,80,100), (0,y), (w,y))
-        for x in range(0, w, 50):
-            pygame.draw.line(wire, (80,80,80,100), (x,0), (x,h))
-        surf.blit(wire, (0,0))
-
-    def glitch_datamosh(self, surf):
-        w, h = surf.get_size()
-        slice_h = 6
-        for _ in range(5):
-            y = random.randint(0, h-1)
-            actual_h = slice_h
-            if y + actual_h > h:
-                actual_h = h - y
-            if actual_h <= 0:
-                continue
-            slc = surf.subsurface((0, y, w, actual_h)).copy()
-            surf.blit(slc, (random.randint(-30, 30), y))
-
-    # --- Glitch helpers (copied from CreditsScene) ---
-    def glitch_vortex(self, surf):
-        # No tilt, just a slight scale effect
-        angle = 0
-        scaled = pygame.transform.rotozoom(surf, angle, 1.02)
-        rect = scaled.get_rect(center=surf.get_rect().center)
-        surf.blit(scaled, rect)
-
-    def glitch_blackhole(self, surf):
-        scale = 1 + (math.sin(self.blink * 0.1) * 0.05)
-        scaled = pygame.transform.rotozoom(surf, 0, scale)
-        rect = scaled.get_rect(center=surf.get_rect().center)
-        surf.blit(scaled, rect, special_flags=pygame.BLEND_SUB)
-
-    def glitch_slices(self, surf, slices=4, max_shift=30):
-        w, h = surf.get_size()
-        for _ in range(slices):
-            y = random.randint(0, h - 4)
-            slice_h = random.randint(4, 20)
-            if y + slice_h > h:
-                slice_h = h - y
-            if slice_h <= 0:
-                continue
-            shift = random.randint(-max_shift, max_shift)
-            slc = surf.subsurface((0, y, w, slice_h)).copy()
-            surf.blit(slc, (shift, y))
-
-    def glitch_rgb_split(self, surf, amount=4):
-        ox = random.randint(-amount, amount)
-        oy = random.randint(-amount, amount)
-        shifted = pygame.Surface(surf.get_size()).convert()
-        shifted.blit(surf, (ox, oy))
-        surf.blit(shifted, (0,0), special_flags=pygame.BLEND_ADD)
-
-    def glitch_flash(self, surf):
-        flash = pygame.Surface(surf.get_size())
-        flash.fill((255,255,255))
-        flash.set_alpha(random.randint(20, 120))
-        surf.blit(flash, (0,0))
-
 # --- Portal Collapse Cutscene (new) ---
 def play_portal_collapse_cutscene(game: "Game", portal_pos: Tuple[int, int], objects: list, backgrounds: list) -> None:
     """
@@ -10604,311 +9558,7 @@ def play_portal_collapse_cutscene(game: "Game", portal_pos: Tuple[int, int], obj
 # ---------------------------------------------------------------------------
 
 
-class LevelEditorScene(Scene):
-    def __init__(self, game, world, level):
-        super().__init__(game)
-        self.editor_world = world
-        self.editor_level = level
-        self.level_path = None
-        self.selected_tool = "platform"  # platform, coin, special
-        self.cursor_pos = [100, 100]
-        self.platforms = []  # List of rects (x, y, w, h)
-        self.coins = []      # List of (x, y)
-        self.specials = []   # List of (x, y)
-        self.goal = None     # (x, y)
-        self.selected_object = None  # (type, index)
-        self.drag_offset = (0, 0)
-        self.is_dragging = False
-        self.camera_x = 0
-        self.camera_y = 0
-        self._camera_move = {"left": False, "right": False, "up": False, "down": False}
-        self.load_current_level()
-
-    def load_current_level(self):
-        # Always use the world/level passed to the editor
-        world = self.editor_world
-        level = self.editor_level
-        self.level_path = None  # No file persistence; purely procedural
-        # 1. Generate the procedural level
-        generator = self.game.level_generator
-        procedural = generator.generate(world, level)
-        # 2. Load procedural objects into editor
-        self.platforms = [pygame.Rect(p.rect.x, p.rect.y, p.rect.width, p.rect.height) for p in list(getattr(procedural, 'platforms', []))]
-        self.coins = [(c.rect.centerx, c.rect.centery) for c in getattr(procedural, 'coins', [])]
-        self.specials = [(s.rect.x, s.rect.y) for s in getattr(procedural, 'specials', [])]
-        self.goal = (procedural.goal.rect.x, procedural.goal.rect.y) if getattr(procedural, 'goal', None) else None
-        self.enemies = []
-        self.spikes = []
-        self._other_sections = {}
-
-    def save_level(self):
-        # No-op: persistence removed; levels are fully procedural
-        print("[Level Editor] Save disabled (levels folder unused)")
-
-    def handle_event(self, event):
-        if event.type == pygame.KEYDOWN:
-            if event.key in (pygame.K_a, pygame.K_LEFT):
-                self._camera_move["left"] = True
-            elif event.key in (pygame.K_d, pygame.K_RIGHT):
-                self._camera_move["right"] = True
-            elif event.key in (pygame.K_w, pygame.K_UP):
-                self._camera_move["up"] = True
-            elif event.key in (pygame.K_s, pygame.K_DOWN):
-                self._camera_move["down"] = True
-            elif event.key == pygame.K_ESCAPE:
-                # Cleanly exit the editor
-                self.game.scene = self.game.last_scene
-            elif event.key == pygame.K_p:
-                # Playtest from level start
-                self._playtest_mode = not getattr(self, '_playtest_mode', False)
-                if self._playtest_mode:
-                    # Reset player to level start
-                    self.player.rect.topleft = self._compute_spawn_point()
-                else:
-                    # Return to editor mode
-                    pass
-            elif event.key == pygame.K_s and pygame.key.get_mods() & pygame.KMOD_CTRL:
-                self.save_level()
-            elif event.key == pygame.K_TAB:
-                # Cycle tool
-                tools = ["platform", "coin", "special"]
-                idx = tools.index(self.selected_tool)
-                self.selected_tool = tools[(idx + 1) % len(tools)]
-            elif event.key == pygame.K_SPACE:
-                if self.selected_tool == "platform":
-                    # Use procedural platform size
-                    generator = self.game.level_generator
-                    settings = generator.settings if hasattr(generator, 'settings') else None
-                    difficulty = generator._difficulty_for(self.editor_world, self.editor_level, "tower" if self.editor_level % 10 == 0 else "default") if hasattr(generator, '_difficulty_for') else 0.0
-                    width = 100
-                    height = 20
-                    if settings:
-                        width = int(settings.width_min.lerp(difficulty))
-                        height = getattr(settings, 'base_platform_height', 32)
-                    plat = pygame.Rect(self.cursor_pos[0], self.cursor_pos[1], width, height)
-                    self.platforms.append(plat)
-                elif self.selected_tool == "coin":
-                    self.coins.append(tuple(self.cursor_pos))
-                elif self.selected_tool == "special":
-                    self.specials.append(tuple(self.cursor_pos))
-            elif event.key == pygame.K_DELETE:
-                if self.selected_tool == "platform":
-                    for plat in self.platforms:
-                        if plat.collidepoint(self.cursor_pos):
-                            self.platforms.remove(plat)
-                            break
-                elif self.selected_tool == "coin":
-                    for coin in self.coins:
-                        cx, cy = coin
-                        if abs(cx - self.cursor_pos[0]) < 16 and abs(cy - self.cursor_pos[1]) < 16:
-                            self.coins.remove(coin)
-                            break
-                elif self.selected_tool == "special":
-                    for obj in self.specials:
-                        ox, oy = obj
-                        if abs(ox - self.cursor_pos[0]) < 20 and abs(oy - self.cursor_pos[1]) < 20:
-                            self.specials.remove(obj)
-                            break
-        elif event.type == pygame.KEYUP:
-            if event.key in (pygame.K_a, pygame.K_LEFT):
-                self._camera_move["left"] = False
-            elif event.key in (pygame.K_d, pygame.K_RIGHT):
-                self._camera_move["right"] = False
-            elif event.key in (pygame.K_w, pygame.K_UP):
-                self._camera_move["up"] = False
-            elif event.key in (pygame.K_s, pygame.K_DOWN):
-                self._camera_move["down"] = False
-        elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            self.cursor_pos = list(event.pos)
-            # Always allow drag/move if cursor tool is selected
-            found = False
-            if getattr(self, '_level_editor_selected_tool', 'platform') == 'cursor':
-                # Try to select an object under the cursor
-                for idx, plat in enumerate(self.platforms):
-                    if plat.collidepoint(self.cursor_pos):
-                        self.selected_object = ("platform", idx)
-                        self.drag_offset = (self.cursor_pos[0] - plat.x, self.cursor_pos[1] - plat.y)
-                        self.is_dragging = True
-                        found = True
-                        break
-                if not found:
-                    for idx, (cx, cy) in enumerate(self.coins):
-                        if abs(cx - self.cursor_pos[0]) < 16 and abs(cy - self.cursor_pos[1]) < 16:
-                            self.selected_object = ("coin", idx)
-                            self.drag_offset = (self.cursor_pos[0] - cx, self.cursor_pos[1] - cy)
-                            self.is_dragging = True
-                            found = True
-                            break
-                if not found:
-                    for idx, (ox, oy) in enumerate(self.specials):
-                        if abs(ox - self.cursor_pos[0]) < 20 and abs(oy - self.cursor_pos[1]) < 20:
-                            self.selected_object = ("special", idx)
-                            self.drag_offset = (self.cursor_pos[0] - ox, self.cursor_pos[1] - oy)
-                            self.is_dragging = True
-                            found = True
-                            break
-                if not found:
-                    self.selected_object = None
-            else:
-                self.selected_object = None
-        elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
-            self.is_dragging = False
-            self.selected_object = None
-        elif event.type == pygame.MOUSEMOTION:
-            self.cursor_pos = list(event.pos)
-            if self.is_dragging and self.selected_object:
-                obj_type, idx = self.selected_object
-                if obj_type == "platform":
-                    plat = self.platforms[idx]
-                    plat.x = self.cursor_pos[0] - self.drag_offset[0]
-                    plat.y = self.cursor_pos[1] - self.drag_offset[1]
-                elif obj_type == "coin":
-                    self.coins[idx] = (self.cursor_pos[0] - self.drag_offset[0], self.cursor_pos[1] - self.drag_offset[1])
-                elif obj_type == "special":
-                    self.specials[idx] = (self.cursor_pos[0] - self.drag_offset[0], self.cursor_pos[1] - self.drag_offset[1])
-        elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
-            self.is_dragging = False
-            self.selected_object = None
-        elif event.type == pygame.MOUSEMOTION:
-            self.cursor_pos = list(event.pos)
-            if self.is_dragging and self.selected_object:
-                obj_type, idx = self.selected_object
-                if obj_type == "platform":
-                    plat = self.platforms[idx]
-                    plat.x = self.cursor_pos[0] - self.drag_offset[0]
-                    plat.y = self.cursor_pos[1] - self.drag_offset[1]
-                elif obj_type == "coin":
-                    self.coins[idx] = (self.cursor_pos[0] - self.drag_offset[0], self.cursor_pos[1] - self.drag_offset[1])
-                elif obj_type == "special":
-                    self.specials[idx] = (self.cursor_pos[0] - self.drag_offset[0], self.cursor_pos[1] - self.drag_offset[1])
-
-    def update(self, dt):
-        # Smooth camera movement
-        speed = int(400 * dt)
-        prev_camera_x = self.camera_x
-        prev_camera_y = self.camera_y
-        if self._camera_move["left"]:
-            self.camera_x -= speed
-        if self._camera_move["right"]:
-            self.camera_x += speed
-        if self._camera_move["up"]:
-            self.camera_y -= speed
-        if self._camera_move["down"]:
-            self.camera_y += speed
-        # If the camera moved and the mouse is not being moved, update the cursor to follow the mouse
-        if (self.camera_x != prev_camera_x or self.camera_y != prev_camera_y):
-            # Get the current mouse position in screen coordinates
-            mouse_x, mouse_y = pygame.mouse.get_pos()
-            # Update cursor_pos to be at the world position under the mouse
-            self.cursor_pos = [mouse_x + self.camera_x, mouse_y + self.camera_y]
-
-    def draw(self, surface):
-        surface.fill((30, 30, 40))
-        # Load assets if not already loaded
-        # Always reload platform asset for the current world
-        world = getattr(self.game, "world", 1)
-        platform_asset_path = PLATFORM_DIR / f'platform{world}.png'
-        try:
-            self._platform_img = pygame.image.load(str(platform_asset_path)).convert_alpha()
-        except Exception:
-            self._platform_img = None
-        if not hasattr(self, '_coin_img'):
-            try:
-                self._coin_img = pygame.image.load(str(OBJECT_DIR / 'coin.png')).convert_alpha()
-            except Exception:
-                self._coin_img = None
-        if not hasattr(self, '_special_img'):
-            try:
-                self._special_img = pygame.image.load(str(OBJECT_DIR / 'spike.png')).convert_alpha()
-            except Exception:
-                self._special_img = None
-        # Draw all platforms
-        for plat in self.platforms:
-            draw_x = plat.x - self.camera_x
-            draw_y = plat.y - self.camera_y
-            if self._platform_img:
-                img = pygame.transform.scale(self._platform_img, (plat.w, plat.h))
-                surface.blit(img, (draw_x, draw_y))
-            else:
-                pygame.draw.rect(surface, (100, 200, 255), pygame.Rect(draw_x, draw_y, plat.w, plat.h))
-        # Draw all coins
-        for x, y in self.coins:
-            draw_x = x - self.camera_x
-            draw_y = y - self.camera_y
-            if self._coin_img:
-                rect = self._coin_img.get_rect(center=(draw_x, draw_y))
-                surface.blit(self._coin_img, rect)
-            else:
-                pygame.draw.circle(surface, (255, 255, 80), (draw_x, draw_y), 10)
-        # Draw all specials (objects)
-        for x, y in self.specials:
-            draw_x = x - self.camera_x
-            draw_y = y - self.camera_y
-            if self._special_img:
-                rect = self._special_img.get_rect(center=(draw_x, draw_y))
-                surface.blit(self._special_img, rect)
-            else:
-                pygame.draw.rect(surface, (255, 120, 40), (draw_x-10, draw_y-10, 20, 20))
-        # Draw goal
-        if self.goal:
-            gx, gy = self.goal
-            pygame.draw.circle(surface, (80, 255, 120), (gx - self.camera_x, gy - self.camera_y), 16, 3)
-        # Draw cursor
-        color = (255, 80, 80)
-        cursor_x = self.cursor_pos[0] - self.camera_x
-        cursor_y = self.cursor_pos[1] - self.camera_y
-        # Draw asset preview at cursor (semi-transparent)
-        preview_alpha = 128
-        tool = self.selected_tool
-        if tool == "cursor":
-            # Draw the cursor icon at the cursor position
-            try:
-                cursor_img = pygame.image.load(str(OBJECT_DIR / 'cursor.png')).convert_alpha()
-                cursor_img.set_alpha(preview_alpha)
-                rect = cursor_img.get_rect(center=(cursor_x, cursor_y))
-                surface.blit(cursor_img, rect)
-            except Exception:
-                pygame.draw.polygon(surface, (255,255,255,preview_alpha), [(cursor_x-12, cursor_y-12), (cursor_x+12, cursor_y), (cursor_x, cursor_y+4), (cursor_x-4, cursor_y+12)])
-        elif tool == "platform":
-            if self._platform_img:
-                img = pygame.transform.scale(self._platform_img, (100, 20)).copy()
-                img.set_alpha(preview_alpha)
-                surface.blit(img, (cursor_x, cursor_y))
-            pygame.draw.rect(surface, color, (cursor_x, cursor_y, 100, 20), 2)
-        elif tool == "coin":
-            if self._coin_img:
-                img = self._coin_img.copy()
-                img.set_alpha(preview_alpha)
-                rect = img.get_rect(center=(cursor_x, cursor_y))
-                surface.blit(img, rect)
-            pygame.draw.circle(surface, color, (cursor_x, cursor_y), 12, 2)
-        elif tool == "special":
-            # For now, use spike asset for preview; can expand for more types
-            if self._special_img:
-                img = self._special_img.copy()
-                img.set_alpha(preview_alpha)
-                rect = img.get_rect(center=(cursor_x, cursor_y))
-                surface.blit(img, rect)
-            pygame.draw.rect(surface, color, (cursor_x-12, cursor_y-12, 24, 24), 2)
-        # Optionally: add more elifs for other object types if needed
-        # Draw UI text
-        font = pygame.font.SysFont("consolas", 28)
-        draw_prompt_with_icons(
-            surface,
-            font,
-            f"Level Editor: Tool=[{self.selected_tool}] Tab=Cycle Ctrl+S=Save Space=Add Del=Remove Esc=Exit | WASD/Arrows=Pan",
-            40,
-            (255, 255, 255),
-            device=getattr(self.game, "last_input_device", "keyboard"),
-        )
-
-
-# === Game loop / application ===
 class Game:
-    def open_level_editor(self) -> None:
-        # Launch the level editor scene for the current world/level
-        self.last_scene = getattr(self, "scene", None)
-        self.scene = LevelEditorScene(self, getattr(self, "world", 1), getattr(self, "level", 1))
     def __init__(self):
         pygame.init()
         self.screen = pygame.display.set_mode(SCREEN_SIZE)
@@ -10950,6 +9600,7 @@ class Game:
         self.last_input_device: str = "keyboard"
         self._suppress_accept_until = 0.0
         self._pause_menu_ignore_back_once = False
+        self.music_override = None
 
         self._refresh_gamepads()
         self.scene = CreditScene(self)
@@ -11008,16 +9659,6 @@ class Game:
         if new_scene.__class__.__name__ != "GameplayScene":
             self.pause_speedrun(True)
         self.scene = new_scene
-        if hasattr(self.scene, "on_enter"):
-            self.scene.on_enter()
-        self.scene.on_exit()
-        # If scene_cls is a lambda or callable, call it to get the scene instance
-        if callable(scene_cls) and not isinstance(scene_cls, type):
-            self.scene = scene_cls(self)
-        elif isinstance(scene_cls, Scene):
-            self.scene = scene_cls
-        else:
-            self.scene = scene_cls(self, *args, **kwargs)
         if hasattr(self.scene, "on_enter"):
             self.scene.on_enter()
 
@@ -11282,6 +9923,10 @@ class Game:
         if not self.settings["music"]:
             self.stop_music()
             return
+
+        override = getattr(self, "music_override", None)
+        if override:
+            track = override
 
         path = Path(track)
         if not path.is_absolute():
