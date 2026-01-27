@@ -1314,9 +1314,7 @@ class AssetCache:
         self._hat_scaled: Dict[Tuple[str, Tuple[int, int]], pygame.Surface] = {}
         self._trail_textures: Dict[str, pygame.Surface] = {}
         self._trail_scaled: Dict[Tuple[str, Tuple[int, int]], pygame.Surface] = {}
-        self._title_logo_frames: Optional[List[pygame.Surface]] = None
-        self._title_logo_durations: Optional[List[float]] = None
-        self._title_logo_static: Optional[pygame.Surface] = None
+        # Removed title logo gif/static assets
 
     def font(self, size: int, bold: bool = True) -> pygame.font.Font:
         key = (size, bold)
@@ -1663,73 +1661,9 @@ class AssetCache:
         self._trail_scaled[key] = scaled
         return scaled.copy()
 
-    def _ensure_title_logo_assets(self) -> None:
-        target_width = 420
+    # Removed _ensure_title_logo_assets (gif/static logo loading)
 
-        if self._title_logo_frames is None or self._title_logo_durations is None:
-            frames: List[pygame.Surface] = []
-            durations: List[float] = []
-            gif_path = BACKGROUND_DIR / "title_logo.gif"
-            if gif_path.exists():
-                gif_frames, gif_durations = load_gif_frames(gif_path)
-                frames.extend(gif_frames)
-                durations.extend(gif_durations)
-
-            processed_frames: List[pygame.Surface] = []
-            for surface in frames:
-                width, height = surface.get_size()
-                if width != target_width and width > 0:
-                    scale = target_width / width
-                    target_height = max(1, int(height * scale))
-                    surface = pygame.transform.smoothscale(surface, (target_width, target_height))
-                processed_frames.append(surface.convert_alpha())
-
-            if processed_frames:
-                self._title_logo_frames = processed_frames
-                self._title_logo_durations = durations or [0.1] * len(processed_frames)
-            else:
-                self._title_logo_frames = []
-                self._title_logo_durations = []
-
-        if self._title_logo_static is None:
-            surface: Optional[pygame.Surface]
-            png_path = BACKGROUND_DIR / "title_logo.png"
-            if png_path.exists():
-                try:
-                    surface = pygame.image.load(png_path).convert_alpha()
-                except Exception as exc:
-                    print(f"[Assets] Failed to load static title logo {png_path}: {exc}")
-                    surface = None
-            else:
-                surface = None
-
-            if surface is None:
-                surface = pygame.Surface((360, 140), pygame.SRCALPHA)
-                draw_center_text(surface, pygame.font.SysFont(FONT_NAME, 36, bold=True), TITLE, surface.get_height() // 2, WHITE)
-
-            width, height = surface.get_size()
-            if width != target_width and width > 0:
-                scale = target_width / width
-                target_height = max(1, int(height * scale))
-                surface = pygame.transform.smoothscale(surface, (target_width, target_height))
-            self._title_logo_static = surface.convert_alpha()
-
-    def title_logo_frames(self, animated: bool = True) -> Tuple[List[pygame.Surface], List[float]]:
-        self._ensure_title_logo_assets()
-        if animated and self._title_logo_frames:
-            durations = self._title_logo_durations or [0.1] * len(self._title_logo_frames)
-            return [frame.copy() for frame in self._title_logo_frames], list(durations)
-
-        if self._title_logo_static is not None:
-            return [self._title_logo_static.copy()], [0.2]
-
-        if self._title_logo_frames:
-            durations = self._title_logo_durations or [0.1] * len(self._title_logo_frames)
-            return [frame.copy() for frame in self._title_logo_frames], list(durations)
-
-        fallback_surface = pygame.Surface((420, 160), pygame.SRCALPHA)
-        draw_center_text(fallback_surface, pygame.font.SysFont(FONT_NAME, 36, bold=True), TITLE, fallback_surface.get_height() // 2, WHITE)
-        return [fallback_surface], [0.2]
+    # Removed title_logo_frames method
 
     def _create_portal_circle(self, world: int) -> pygame.Surface:
         size = 96
@@ -4434,12 +4368,12 @@ def run_settings_menu(game: "Game", title: str = "SETTINGS") -> None:
     menu = VerticalMenu(
         [
             MenuEntry(
-                lambda: f"Music: {'On' if game.settings['music'] else 'Off'}",
-                toggle_music,
-            ),
-            MenuEntry(
                 lambda: "Music Player",
                 lambda: run_music_player_menu(game),
+            ),
+            MenuEntry(
+                lambda: f"Music: {'On' if game.settings['music'] else 'Off'}",
+                toggle_music,
             ),
             MenuEntry(
                 lambda: f"Sound FX: {'On' if game.settings['sfx'] else 'Off'}",
@@ -4527,7 +4461,6 @@ def run_pause_menu(scene: "GameplayScene") -> str:
         [
             MenuEntry(lambda: "Resume", resume),
             MenuEntry(lambda: "Settings", lambda: open_settings()),
-            MenuEntry(lambda: "Music Player", lambda: run_music_player_menu(scene.game)),
             MenuEntry(lambda: "Shops", open_shops),
             MenuEntry(lambda: "Main Menu", to_menu),
             MenuEntry(lambda: "Quit Game", quit_game),
