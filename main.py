@@ -944,6 +944,19 @@ ENEMY_COLORS = [
     (255, 180, 255),
 ]
 
+ENEMY_ASSET_FILES: Dict[int, str] = {
+    1: "jungle_snake.png",
+    2: "stone_golem.png",
+    3: "mummy.png",
+    4: "vine_beast.png",
+    5: "snow_wolf.png",
+    6: "fire_dragon.png",
+    7: "sky_hawk.png",
+    8: "cyber_drone.png",
+    9: "phantom.png",
+    10: "glitch_bug.png",
+}
+
 TOWER_NAMES = [
     "Tower of Growth",
     "Tower of Stone",
@@ -1236,17 +1249,6 @@ class ProgressManager:
                         owned_hats.insert(0, "None")
                     base_c["owned_hats"] = owned_hats
                 self.cosmetics = base_c
-            # Load speedrun timer data if present
-            game = getattr(self, 'game', None)
-            if game is not None:
-                if "speedrun_active" in data:
-                    game.speedrun_active = bool(data["speedrun_active"])
-                if "speedrun_start" in data:
-                    game.speedrun_start = float(data["speedrun_start"])
-                if "speedrun_pause_accum" in data:
-                    game.speedrun_pause_accum = float(data["speedrun_pause_accum"])
-                if "speedrun_paused" in data:
-                    game.speedrun_paused = bool(data["speedrun_paused"])
         except Exception as exc:
             print(f"[Save] Failed to read save file: {exc}")
             self.world, self.level = 1, 1
@@ -1254,7 +1256,6 @@ class ProgressManager:
             self.coins = 0
 
     def save(self, world: int, level: int, player_color: Optional[Tuple[int, int, int]] = None, coins: Optional[int] = None, skills: Optional[Dict[str, Any]] = None, cosmetics: Optional[Dict[str, Any]] = None) -> None:
-        """Persist world, level, coins, optional player_color, and selected character/form if available, plus speedrun timer data."""
         self.world, self.level = world, level
         if coins is not None:
             self.coins = int(coins)
@@ -1280,11 +1281,6 @@ class ProgressManager:
                 payload["character"] = selected_character
             if selected_form is not None:
                 payload["form"] = selected_form
-            # Save speedrun timer data
-            payload["speedrun_active"] = getattr(game, "speedrun_active", False)
-            payload["speedrun_start"] = getattr(game, "speedrun_start", 0.0)
-            payload["speedrun_pause_accum"] = getattr(game, "speedrun_pause_accum", 0.0)
-            payload["speedrun_paused"] = getattr(game, "speedrun_paused", False)
         try:
             self.path.write_text(json.dumps(payload))
         except Exception as exc:
@@ -1404,9 +1400,10 @@ class AssetCache:
     def enemy_texture(self, world: int) -> pygame.Surface:
         world = max(1, min(world, len(ENEMY_COLORS)))
         if world not in self._enemy_textures:
-            path = ASSET_DIR / "enemies" / f"world{world}" / "enemy.png"
+            filename = ENEMY_ASSET_FILES.get(world)
+            path = ASSET_DIR / "enemies" / filename if filename else None
             texture: Optional[pygame.Surface] = None
-            if path.exists():
+            if path and path.exists():
                 try:
                     texture = pygame.image.load(path).convert_alpha()
                 except Exception as exc:
@@ -2305,89 +2302,85 @@ def play_world_transition(game: "Game", from_world: int, to_world: int) -> None:
     shimmer_color = config.get("shimmer", (200, 200, 255))
     params = config.get("params", {})
 
-    game.pause_speedrun(True)
-    try:
-        game.stop_music()
-        game.sound.play_event("world_transition")
-        start = time.time()
-        font = game.assets.font(44, True)
-        subtitle_font = game.assets.font(24, False)
+    game.stop_music()
+    game.sound.play_event("world_transition")
+    start = time.time()
+    font = game.assets.font(44, True)
+    subtitle_font = game.assets.font(24, False)
 
-        bg1 = game.assets.background(from_world) if effect != "default" else None
-        bg2 = game.assets.background(to_world) if effect != "default" else None
-        title_font = game.assets.font(44, True)
+    bg1 = game.assets.background(from_world) if effect != "default" else None
+    bg2 = game.assets.background(to_world) if effect != "default" else None
+    title_font = game.assets.font(44, True)
 
-        while game.running and time.time() - start < duration + extra_fx_time:
-            for event in pygame.event.get():
-                if event.type == pygame.QUIT:
-                    game.quit()
-                    return
-            elapsed = time.time() - start
-            t = min(1.0, elapsed / duration) if duration > 0 else 1.0
+    while game.running and time.time() - start < duration + extra_fx_time:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                game.quit()
+                return
+        elapsed = time.time() - start
+        t = min(1.0, elapsed / duration) if duration > 0 else 1.0
 
-            if effect == "default":
-                half = duration / 2 if duration > 0 else 1.0
-                new_color = BG_COLORS[min(to_world - 1, len(BG_COLORS) - 1)]
-                game.screen.fill((0, 0, 0))
-                overlay = pygame.Surface(SCREEN_SIZE)
-                overlay.fill(new_color)
-                overlay.set_alpha(120)
-                game.screen.blit(overlay, (0, 0))
-                if elapsed < half:
-                    alpha = int(min(1.0, elapsed / (half * 0.7)) * 255)
-                    text = f"World {from_world} Complete"
-                    render = title_font.render(text, True, WHITE)
-                    render.set_alpha(alpha)
-                    game.screen.blit(render, render.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 - 20)))
-                else:
-                    alpha = int(min(1.0, (elapsed - half) / (half * 0.7)) * 255)
-                    text = f"Entering World {to_world}"
-                    render = title_font.render(text, True, WHITE)
-                    render.set_alpha(alpha)
-                    game.screen.blit(render, render.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 - 20)))
-                    subtitle = config.get("subtitle")
-                    if subtitle:
-                        sub = subtitle_font.render(subtitle, True, WHITE)
-                        sub.set_alpha(alpha)
-                        game.screen.blit(sub, sub.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 30)))
-                pygame.display.flip()
-                game.clock.tick(FPS)
-                continue
-
-            if bg1:
-                game.screen.blit(bg1, (0, 0))
-            if bg2:
-                overlay = pygame.Surface(SCREEN_SIZE)
-                overlay.blit(bg2, (0, 0))
-                overlay.set_alpha(int(180 * t))
-                game.screen.blit(overlay, (0, 0))
-
-            _draw_transition_effect(game, effect, t, elapsed, params)
-
-            if t > 0.85:
-                shimmer_alpha = int(120 * (t - 0.85) / 0.15)
-                _draw_transition_shimmer(game.screen, shimmer_color, shimmer_alpha, 40)
-
-            alpha = int(255 * t)
-            text = config.get("text1", "")
-            text2 = config.get("text2", "")
-            if text:
-                render = font.render(text, True, WHITE)
+        if effect == "default":
+            half = duration / 2 if duration > 0 else 1.0
+            new_color = BG_COLORS[min(to_world - 1, len(BG_COLORS) - 1)]
+            game.screen.fill((0, 0, 0))
+            overlay = pygame.Surface(SCREEN_SIZE)
+            overlay.fill(new_color)
+            overlay.set_alpha(120)
+            game.screen.blit(overlay, (0, 0))
+            if elapsed < half:
+                alpha = int(min(1.0, elapsed / (half * 0.7)) * 255)
+                text = f"World {from_world} Complete"
+                render = title_font.render(text, True, WHITE)
                 render.set_alpha(alpha)
-                game.screen.blit(render, render.get_rect(center=(SCREEN_WIDTH // 2, 120)))
-            if text2:
-                render2 = font.render(text2, True, WHITE)
-                render2.set_alpha(alpha)
-                game.screen.blit(render2, render2.get_rect(center=(SCREEN_WIDTH // 2, 180)))
-
-            if elapsed > duration and extra_fx_time > 0:
-                shimmer_alpha = int(120 * (1 - (elapsed - duration) / extra_fx_time))
-                _draw_transition_shimmer(game.screen, shimmer_color, shimmer_alpha, 30)
-
+                game.screen.blit(render, render.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 - 20)))
+            else:
+                alpha = int(min(1.0, (elapsed - half) / (half * 0.7)) * 255)
+                text = f"Entering World {to_world}"
+                render = title_font.render(text, True, WHITE)
+                render.set_alpha(alpha)
+                game.screen.blit(render, render.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 - 20)))
+                subtitle = config.get("subtitle")
+                if subtitle:
+                    sub = subtitle_font.render(subtitle, True, WHITE)
+                    sub.set_alpha(alpha)
+                    game.screen.blit(sub, sub.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 30)))
             pygame.display.flip()
             game.clock.tick(FPS)
-    finally:
-        game.pause_speedrun(False)
+            continue
+
+        if bg1:
+            game.screen.blit(bg1, (0, 0))
+        if bg2:
+            overlay = pygame.Surface(SCREEN_SIZE)
+            overlay.blit(bg2, (0, 0))
+            overlay.set_alpha(int(180 * t))
+            game.screen.blit(overlay, (0, 0))
+
+        _draw_transition_effect(game, effect, t, elapsed, params)
+
+        if t > 0.85:
+            shimmer_alpha = int(120 * (t - 0.85) / 0.15)
+            _draw_transition_shimmer(game.screen, shimmer_color, shimmer_alpha, 40)
+
+        alpha = int(255 * t)
+        text = config.get("text1", "")
+        text2 = config.get("text2", "")
+        if text:
+            render = font.render(text, True, WHITE)
+            render.set_alpha(alpha)
+            game.screen.blit(render, render.get_rect(center=(SCREEN_WIDTH // 2, 120)))
+        if text2:
+            render2 = font.render(text2, True, WHITE)
+            render2.set_alpha(alpha)
+            game.screen.blit(render2, render2.get_rect(center=(SCREEN_WIDTH // 2, 180)))
+
+        if elapsed > duration and extra_fx_time > 0:
+            shimmer_alpha = int(120 * (1 - (elapsed - duration) / extra_fx_time))
+            _draw_transition_shimmer(game.screen, shimmer_color, shimmer_alpha, 30)
+
+        pygame.display.flip()
+        game.clock.tick(FPS)
 # ---------------------------------------------------------------------------
 # Level entities
 # ---------------------------------------------------------------------------
@@ -2878,143 +2871,87 @@ class Coin(pygame.sprite.Sprite):
 
 
 class Enemy(pygame.sprite.Sprite):
-    def __init__(self, x, y, speed=2, world=1, assets=None):
+    def __init__(self, x: int, y: int, *, world: int = 1, speed: Optional[int] = None, assets: Optional["AssetCache"] = None):
         super().__init__()
-        self.rect = pygame.Rect(x, y, 32, 32)
-        self.speed = speed
         self.world = world
         self.assets = assets
-    def update(self):
-        self.rect.x += self.speed
-        if self.rect.left < 0 or self.rect.right > 800:  # Assuming 800 is screen width
-            self.speed *= -1
-
-# --- World-Specific Enemies ---
-class JungleSnake(Enemy):
-    def __init__(self, x, y, speed=2, world=1, assets=None):
-        super().__init__(x, y, speed, world, assets)
-        self.image = pygame.Surface((32, 16), pygame.SRCALPHA)
-        pygame.draw.ellipse(self.image, (60, 180, 60), (0, 0, 32, 16))
-        pygame.draw.circle(self.image, (40, 120, 40), (8, 8), 6)
-        pygame.draw.circle(self.image, (0, 0, 0), (12, 8), 2)
-
-class StoneGolem(Enemy):
-    def __init__(self, x, y, speed=1, world=2, assets=None):
-        super().__init__(x, y, speed, world, assets)
-        self.image = pygame.Surface((28, 32), pygame.SRCALPHA)
-        pygame.draw.rect(self.image, (120, 110, 100), (0, 8, 28, 24))
-        pygame.draw.rect(self.image, (80, 70, 60), (4, 20, 20, 8))
-        pygame.draw.circle(self.image, (180, 170, 160), (14, 14), 10)
-        pygame.draw.circle(self.image, (0, 0, 0), (10, 14), 2)
-
-class Mummy(Enemy):
-    def __init__(self, x, y, speed=2, world=3, assets=None):
-        super().__init__(x, y, speed, world, assets)
-        self.image = pygame.Surface((32, 32), pygame.SRCALPHA)
-        pygame.draw.rect(self.image, (220, 220, 180), (0, 0, 32, 32))
-        for i in range(0, 32, 6):
-            pygame.draw.line(self.image, (180, 180, 140), (0, i), (32, i), 2)
-        pygame.draw.circle(self.image, (0, 0, 0), (10, 12), 3)
-        pygame.draw.circle(self.image, (0, 0, 0), (22, 12), 3)
-
-class VineBeast(Enemy):
-    def __init__(self, x, y, speed=2, world=4, assets=None):
-        super().__init__(x, y, speed, world, assets)
-        self.image = pygame.Surface((32, 24), pygame.SRCALPHA)
-        pygame.draw.ellipse(self.image, (60, 200, 80), (0, 8, 32, 16))
-        pygame.draw.line(self.image, (30, 120, 40), (8, 16), (24, 16), 3)
-        pygame.draw.circle(self.image, (0, 0, 0), (12, 16), 2)
-
-class SnowWolf(Enemy):
-    def __init__(self, x, y, speed=3, world=5, assets=None):
-        super().__init__(x, y, speed, world, assets)
-        self.image = pygame.Surface((36, 24), pygame.SRCALPHA)
-        pygame.draw.ellipse(self.image, (220, 240, 255), (0, 8, 36, 16))
-        pygame.draw.circle(self.image, (220, 240, 255), (8, 12), 8)
-        pygame.draw.polygon(self.image, (180, 180, 200), [(30, 8), (36, 12), (30, 16)])
-        pygame.draw.circle(self.image, (0, 0, 0), (12, 16), 2)
-
-class FireDragon(Enemy):
-    def __init__(self, x, y, speed=3, world=6, assets=None):
-        super().__init__(x, y, speed, world, assets)
-        self.image = pygame.Surface((36, 24), pygame.SRCALPHA)
-        pygame.draw.ellipse(self.image, (255, 80, 40), (0, 8, 36, 16))
-        pygame.draw.circle(self.image, (255, 180, 40), (8, 12), 8)
-        pygame.draw.polygon(self.image, (255, 120, 0), [(30, 8), (36, 12), (30, 16)])
-        pygame.draw.circle(self.image, (0, 0, 0), (12, 16), 2)
-
-class SkyHawk(Enemy):
-    def __init__(self, x, y, speed=4, world=7, assets=None):
-        super().__init__(x, y, speed, world, assets)
-        self.image = pygame.Surface((32, 20), pygame.SRCALPHA)
-        pygame.draw.polygon(self.image, (180, 220, 255), [(0, 10), (16, 0), (32, 10), (16, 20)])
-        pygame.draw.circle(self.image, (255, 255, 255), (16, 10), 4)
-        pygame.draw.circle(self.image, (0, 0, 0), (20, 10), 2)
-
-class CyberDrone(Enemy):
-    def __init__(self, x, y, speed=2, world=8, assets=None):
-        super().__init__(x, y, speed, world, assets)
-        self.image = pygame.Surface((28, 28), pygame.SRCALPHA)
-        pygame.draw.ellipse(self.image, (80, 255, 255), (0, 8, 28, 12))
-        pygame.draw.rect(self.image, (40, 200, 255), (8, 12, 12, 8))
-        pygame.draw.circle(self.image, (0, 0, 0), (14, 14), 2)
-
-class Phantom(Enemy):
-    def __init__(self, x, y, speed=2, world=9, assets=None):
-        super().__init__(x, y, speed, world, assets)
-        self.image = pygame.Surface((28, 32), pygame.SRCALPHA)
-        pygame.draw.ellipse(self.image, (180, 180, 255, 180), (0, 0, 28, 32))
-        pygame.draw.circle(self.image, (255, 255, 255, 200), (14, 12), 8)
-        pygame.draw.circle(self.image, (0, 0, 0), (10, 16), 2)
-
-class GlitchBug(Enemy):
-    def __init__(self, x, y, speed=2, world=10, assets=None):
-        super().__init__(x, y, speed, world, assets)
-        self.image = pygame.Surface((24, 24), pygame.SRCALPHA)
-        pygame.draw.rect(self.image, (200, 80, 255), (0, 8, 24, 8))
-        pygame.draw.circle(self.image, (255, 255, 255), (12, 12), 8)
-        pygame.draw.circle(self.image, (0, 0, 0), (16, 12), 2)
-
-class DefaultEnemy(Enemy):
-    def __init__(self, x, y, speed=2, world=1, assets=None):
-        super().__init__(x, y, speed, world, assets)
-
-def create_enemy(x, y, world, speed=2, assets=None):
-    if world == 1:
-        return JungleSnake(x, y, speed, world, assets)
-    elif world == 2:
-        return StoneGolem(x, y, speed, world, assets)
-    elif world == 3:
-        return Mummy(x, y, speed, world, assets)
-    elif world == 4:
-        return VineBeast(x, y, speed, world, assets)
-    elif world == 5:
-        return SnowWolf(x, y, speed, world, assets)
-    elif world == 6:
-        return FireDragon(x, y, speed, world, assets)
-    elif world == 7:
-        return SkyHawk(x, y, speed, world, assets)
-    elif world == 8:
-        return CyberDrone(x, y, speed, world, assets)
-    elif world == 9:
-        return Phantom(x, y, speed, world, assets)
-    elif world == 10:
-        return GlitchBug(x, y, speed, world, assets)
-    else:
-        return DefaultEnemy(x, y, speed, world, assets)
-    effect = "kill"
-
-    def __init__(self, x: int, y: int, speed: int = 2, world: int = 1, assets: Optional[AssetCache] = None):
-        super().__init__()
-        if assets is not None:
-            self.image = assets.enemy_texture(world)
-        else:
-            self.image = pygame.Surface((30, 30))
-            self.image.fill(ENEMY_COLORS[(world - 1) % len(ENEMY_COLORS)])
+        profile = ENEMY_PROFILES.get(world, ENEMY_PROFILES[1])
+        move_speed = speed if speed is not None else profile.speed
+        self.image = self._load_surface(profile)
         self.rect = self.image.get_rect(topleft=(x, y))
-        # Ensure enemies always move: pick a non-zero speed with random direction
-        base_speed = max(2, abs(speed))
+        base_speed = max(2, abs(move_speed))
         self.speed = base_speed if random.random() < 0.5 else -base_speed
+
+    def _load_surface(self, profile: "EnemyProfile") -> pygame.Surface:
+        if self.assets is not None:
+            try:
+                tex = self.assets.enemy_texture(self.world)
+                if tex is not None:
+                    return tex.copy()
+            except Exception:
+                pass
+        else:
+            filename = ENEMY_ASSET_FILES.get(self.world)
+            path = ASSET_DIR / "enemies" / filename if filename else None
+            if path and path.exists():
+                try:
+                    return pygame.image.load(path).convert_alpha()
+                except Exception:
+                    pass
+        return self._build_surface(profile)
+
+    def _build_surface(self, profile: "EnemyProfile") -> pygame.Surface:
+        w, h = profile.size
+        surf = pygame.Surface((w, h), pygame.SRCALPHA)
+        style = profile.style
+        if style == "snake":
+            pygame.draw.ellipse(surf, (60, 180, 60), (0, 0, w, h))
+            pygame.draw.circle(surf, (40, 120, 40), (int(w * 0.25), int(h * 0.5)), max(2, int(min(w, h) * 0.25)))
+            pygame.draw.circle(surf, (0, 0, 0), (int(w * 0.38), int(h * 0.5)), max(1, int(min(w, h) * 0.08)))
+        elif style == "golem":
+            pygame.draw.rect(surf, (120, 110, 100), (0, int(h * 0.25), w, int(h * 0.75)))
+            pygame.draw.rect(surf, (80, 70, 60), (int(w * 0.15), int(h * 0.62), int(w * 0.7), int(h * 0.25)))
+            pygame.draw.circle(surf, (180, 170, 160), (w // 2, int(h * 0.4)), int(min(w, h) * 0.35))
+            pygame.draw.circle(surf, (0, 0, 0), (int(w * 0.36), int(h * 0.45)), max(1, int(min(w, h) * 0.08)))
+        elif style == "mummy":
+            pygame.draw.rect(surf, (220, 220, 180), (0, 0, w, h))
+            for i in range(0, h, max(4, h // 6)):
+                pygame.draw.line(surf, (180, 180, 140), (0, i), (w, i), 2)
+            pygame.draw.circle(surf, (0, 0, 0), (int(w * 0.3), int(h * 0.38)), max(2, int(min(w, h) * 0.1)))
+            pygame.draw.circle(surf, (0, 0, 0), (int(w * 0.7), int(h * 0.38)), max(2, int(min(w, h) * 0.1)))
+        elif style == "vine":
+            pygame.draw.ellipse(surf, (60, 200, 80), (0, int(h * 0.25), w, int(h * 0.6)))
+            pygame.draw.line(surf, (30, 120, 40), (int(w * 0.25), int(h * 0.6)), (int(w * 0.75), int(h * 0.6)), 3)
+            pygame.draw.circle(surf, (0, 0, 0), (int(w * 0.4), int(h * 0.65)), max(1, int(min(w, h) * 0.08)))
+        elif style == "wolf":
+            pygame.draw.ellipse(surf, (220, 240, 255), (0, int(h * 0.25), w, int(h * 0.6)))
+            pygame.draw.circle(surf, (220, 240, 255), (int(w * 0.22), int(h * 0.45)), int(min(w, h) * 0.35))
+            pygame.draw.polygon(surf, (180, 180, 200), [(int(w * 0.82), int(h * 0.25)), (w, int(h * 0.5)), (int(w * 0.82), int(h * 0.75))])
+            pygame.draw.circle(surf, (0, 0, 0), (int(w * 0.35), int(h * 0.6)), max(1, int(min(w, h) * 0.08)))
+        elif style == "dragon":
+            pygame.draw.ellipse(surf, (255, 80, 40), (0, int(h * 0.25), w, int(h * 0.6)))
+            pygame.draw.circle(surf, (255, 180, 40), (int(w * 0.22), int(h * 0.45)), int(min(w, h) * 0.35))
+            pygame.draw.polygon(surf, (255, 120, 0), [(int(w * 0.82), int(h * 0.25)), (w, int(h * 0.5)), (int(w * 0.82), int(h * 0.75))])
+            pygame.draw.circle(surf, (0, 0, 0), (int(w * 0.35), int(h * 0.6)), max(1, int(min(w, h) * 0.08)))
+        elif style == "hawk":
+            pygame.draw.polygon(surf, (180, 220, 255), [(0, h // 2), (w // 2, 0), (w, h // 2), (w // 2, h)])
+            pygame.draw.circle(surf, (255, 255, 255), (w // 2, h // 2), max(2, int(min(w, h) * 0.2)))
+            pygame.draw.circle(surf, (0, 0, 0), (int(w * 0.62), h // 2), max(1, int(min(w, h) * 0.08)))
+        elif style == "drone":
+            pygame.draw.ellipse(surf, (80, 255, 255), (0, int(h * 0.28), w, int(h * 0.44)))
+            pygame.draw.rect(surf, (40, 200, 255), (int(w * 0.28), int(h * 0.43), int(w * 0.44), int(h * 0.3)))
+            pygame.draw.circle(surf, (0, 0, 0), (w // 2, h // 2), max(1, int(min(w, h) * 0.08)))
+        elif style == "phantom":
+            pygame.draw.ellipse(surf, (180, 180, 255, 180), (0, 0, w, h))
+            pygame.draw.circle(surf, (255, 255, 255, 200), (w // 2, int(h * 0.4)), int(min(w, h) * 0.35))
+            pygame.draw.circle(surf, (0, 0, 0), (int(w * 0.36), int(h * 0.5)), max(1, int(min(w, h) * 0.08)))
+        elif style == "glitch":
+            pygame.draw.rect(surf, (200, 80, 255), (0, int(h * 0.3), w, int(h * 0.35)))
+            pygame.draw.circle(surf, (255, 255, 255), (w // 2, h // 2), int(min(w, h) * 0.4))
+            pygame.draw.circle(surf, (0, 0, 0), (int(w * 0.66), h // 2), max(1, int(min(w, h) * 0.08)))
+        else:
+            surf.fill(ENEMY_COLORS[(self.world - 1) % len(ENEMY_COLORS)])
+        return surf
 
     def update(self) -> None:
         if self.speed == 0:
@@ -3022,6 +2959,33 @@ def create_enemy(x, y, world, speed=2, assets=None):
         self.rect.x += self.speed
         if self.rect.left < 0 or self.rect.right > SCREEN_WIDTH:
             self.speed *= -1
+
+
+@dataclass(frozen=True)
+class EnemyProfile:
+    size: Tuple[int, int]
+    speed: int
+    style: str
+
+
+ENEMY_PROFILES: Dict[int, EnemyProfile] = {
+    1: EnemyProfile((32, 16), 2, "snake"),
+    2: EnemyProfile((28, 32), 1, "golem"),
+    3: EnemyProfile((32, 32), 2, "mummy"),
+    4: EnemyProfile((32, 24), 2, "vine"),
+    5: EnemyProfile((36, 24), 3, "wolf"),
+    6: EnemyProfile((36, 24), 3, "dragon"),
+    7: EnemyProfile((32, 20), 4, "hawk"),
+    8: EnemyProfile((28, 28), 2, "drone"),
+    9: EnemyProfile((28, 32), 2, "phantom"),
+    10: EnemyProfile((24, 24), 2, "glitch"),
+}
+
+
+def create_enemy(x: int, y: int, world: int, speed: int = 2, assets: Optional["AssetCache"] = None) -> Enemy:
+    profile = ENEMY_PROFILES.get(world, ENEMY_PROFILES[1])
+    use_speed = speed if speed is not None else profile.speed
+    return Enemy(x, y, world=world, speed=use_speed, assets=assets)
 
 
 class Boss(pygame.sprite.Sprite):
@@ -3621,233 +3585,417 @@ class PlayerProjectile(pygame.sprite.Sprite):
         self.rect.x += self.velocity_x
         if self.rect.right < 0 or self.rect.left > SCREEN_WIDTH:
             self.kill()
-class Spike(pygame.sprite.Sprite):
-    effect = "kill"
-    _ASSETS: Dict[int, Dict[str, pygame.Surface]] = {}
+class Hazard(pygame.sprite.Sprite):
+    def __init__(
+        self,
+        kind: str,
+        x: int,
+        y: int,
+        *,
+        world: int = 1,
+        direction: str = "up",
+    ):
+        super().__init__()
+        profile = HAZARD_PROFILES.get(kind, HAZARD_PROFILES["spike"])
+        self.kind = kind
+        self.effect = profile.effect
+        self.is_deadly = profile.deadly
+        self.world = world
+        self.direction = direction
+        self.frames: List[pygame.Surface] = []
+        self.frame = 0
+        self.frame_timer = 0
+        self.frame_interval = 8
+        self.base_pos = pygame.Vector2(x, y)
+        self.image = self._build_surface(profile)
+        self.rect = self.image.get_rect(topleft=(x, y))
+        self._init_behavior(profile)
 
-    @classmethod
-    def _load_assets(cls, world: int) -> Dict[str, pygame.Surface]:
-        if world in cls._ASSETS:
-            return cls._ASSETS[world]
+    def _init_behavior(self, profile: "HazardProfile") -> None:
+        if self.kind == "lava":
+            self.base_y = self.rect.y
+            self.bob_speed = 2
+        elif self.kind == "wind":
+            self.initial_x = self.rect.x
+            self.initial_y = self.rect.y
+            self.angle = 0
+            self.orbit_radius = 20
+            self.orbit_speed = 2
+        elif self.kind == "electric":
+            self.active = False
+            self.timer = 0
+            self.cycle_time = 120
+        elif self.kind == "ghost":
+            self.speed = 2
+            self.target = None
+        elif self.kind == "icicle":
+            self.falling = False
+            self.fall_speed = 0
+        elif self.kind == "rock":
+            self.fall_speed = 0
+        elif self.kind == "glitch":
+            self.timer = 0
 
-        assets = {}
+    def _build_surface(self, profile: "HazardProfile") -> pygame.Surface:
+        if self.kind == "spike":
+            assets = self._load_spike_assets(self.world)
+            image = assets.get(self.direction, assets.get("up"))
+            if image is not None:
+                return image
+            fallback = pygame.Surface(profile.size, pygame.SRCALPHA)
+            fallback.fill(RED)
+            return fallback
+
+        if self.kind == "lava":
+            self.frames = self._load_orb_frames("lava_bubble", (255, 100, 0))
+            return self.frames[0] if self.frames else pygame.Surface(profile.size, pygame.SRCALPHA)
+
+        if self.kind == "wind":
+            self.frames = self._load_orb_frames("wind_orb", (150, 255, 255))
+            return self.frames[0] if self.frames else pygame.Surface(profile.size, pygame.SRCALPHA)
+
+        if self.kind == "ghost":
+            self.frames = self._load_orb_frames("ghost_orb", (200, 200, 255))
+            return self.frames[0] if self.frames else pygame.Surface(profile.size, pygame.SRCALPHA)
+
+        if self.kind == "icicle":
+            self.frames = self._load_icicle_frames(self.world)
+            return self.frames[0] if self.frames else pygame.Surface(profile.size, pygame.SRCALPHA)
+
+        if self.kind == "electric":
+            self._inactive_image, self._active_image = self._load_electric_images(self.world)
+            return self._inactive_image
+
+        if self.kind == "rock":
+            return self._load_rock_surface(self.world)
+
+        if self.kind == "quicksand":
+            return self._load_quicksand_surface(self.world)
+
+        if self.kind == "glitch":
+            return self._load_glitch_surface(self.world)
+
+        return self._fallback_surface(profile)
+
+    def _fallback_surface(self, profile: "HazardProfile") -> pygame.Surface:
+        surf = pygame.Surface(profile.size, pygame.SRCALPHA)
+        surf.fill((255, 0, 0))
+        return surf
+
+    @staticmethod
+    def _load_spike_assets(world: int) -> Dict[str, pygame.Surface]:
+        if not hasattr(Hazard, "_SPIKE_ASSETS"):
+            Hazard._SPIKE_ASSETS = {}
+        if world in Hazard._SPIKE_ASSETS:
+            return Hazard._SPIKE_ASSETS[world]
+
+        assets: Dict[str, pygame.Surface] = {}
         size = (32, 16)
-        spike_path = OBJECT_DIR / "spike.png"
-        
+        spike_path = ASSET_DIR / "objects" / f"world{world}" / "spike.png"
+        fallback_path = OBJECT_DIR / "spike.png"
         if spike_path.exists():
             try:
                 sheet = pygame.image.load(spike_path).convert_alpha()
-                # Load each direction from sprite sheet (up, down, left, right) - assumes horizontal strip
-                for i, direction in enumerate(["up", "down", "left", "right"]): # This assumes a horizontal strip
+                for i, direction in enumerate(["up", "down", "left", "right"]):
                     sprite = pygame.Surface(size, pygame.SRCALPHA)
                     sprite.blit(sheet, (0, 0), (i * size[0], 0, *size))
                     assets[direction] = sprite
-            except Exception as e:
-                print(f"Failed to load spike assets for world {world}: {e}")
-        
+            except Exception:
+                pass
+        elif fallback_path.exists():
+            try:
+                base = pygame.image.load(str(fallback_path)).convert_alpha()
+                base = pygame.transform.smoothscale(base, size)
+                assets["up"] = base
+                assets["down"] = pygame.transform.rotate(base, 180)
+                assets["left"] = pygame.transform.rotate(base, 90)
+                assets["right"] = pygame.transform.rotate(base, -90)
+            except Exception:
+                pass
+
         if not assets:
-            # Fallback to generated spikes with world-themed colors
             world_theme = WORLD_THEMES.get(world)
             base_color = (180, 180, 180)
             highlight_color = (220, 220, 220)
             if world_theme:
                 bg_color = world_theme.background_color
-                # Derive spike color from background to match theme
                 try:
-                    hue, sat, val = colorsys.rgb_to_hsv(*(c/255 for c in bg_color))
+                    hue, sat, val = colorsys.rgb_to_hsv(bg_color[0]/255, bg_color[1]/255, bg_color[2]/255)
                     spike_rgb = colorsys.hsv_to_rgb(hue, min(1.0, sat + 0.2), max(0.2, val - 0.3))
                     base_color = tuple(int(x * 255) for x in spike_rgb)
                     highlight_color = _brighten(base_color, 40)
                 except Exception:
                     pass
-            
+
             up = pygame.Surface(size, pygame.SRCALPHA)
             pygame.draw.polygon(up, base_color, [(0, 16), (16, 0), (32, 16)])
             pygame.draw.line(up, highlight_color, (16, 2), (2, 15), 2)
             assets["up"] = up
-            
+
             down = pygame.Surface(size, pygame.SRCALPHA)
             pygame.draw.polygon(down, base_color, [(0, 0), (16, 16), (32, 0)])
             pygame.draw.line(down, highlight_color, (16, 14), (2, 1), 2)
             assets["down"] = down
-            
+
             left = pygame.Surface((16, 32), pygame.SRCALPHA)
             pygame.draw.polygon(left, base_color, [(16, 0), (0, 16), (16, 32)])
             pygame.draw.line(left, highlight_color, (14, 2), (1, 16), 2)
             assets["left"] = left
-            
+
             right = pygame.Surface((16, 32), pygame.SRCALPHA)
             pygame.draw.polygon(right, base_color, [(0, 0), (16, 16), (0, 32)])
             pygame.draw.line(right, highlight_color, (2, 2), (15, 16), 2)
             assets["right"] = right
-        
-        cls._ASSETS[world] = assets
+
+        Hazard._SPIKE_ASSETS[world] = assets
         return assets
 
-    def __init__(self, x: int, y: int, direction: str = "up", world: int = 1):
-        super().__init__()
-        assets = self._load_assets(world)
-        self.image = assets.get(direction, assets.get("up"))
-        if not self.image: # Ultimate fallback
-            self.image = pygame.Surface((32,16))
-            self.image.fill(RED)
-        self.rect = self.image.get_rect(topleft=(x, y))
+    def _load_orb_frames(self, filename: str, base_color: Tuple[int, int, int]) -> List[pygame.Surface]:
+        if not hasattr(Hazard, "_ORB_ASSETS"):
+            Hazard._ORB_ASSETS = {}
+        key = (self.kind, self.world)
+        if key in Hazard._ORB_ASSETS:
+            return Hazard._ORB_ASSETS[key]
 
+        frames: List[pygame.Surface] = []
+        orb_path = ASSET_DIR / "objects" / f"world{self.world}" / f"{filename}.png"
+        fallback_path = OBJECT_DIR / f"{filename}.png"
+        if orb_path.exists():
+            try:
+                sheet = pygame.image.load(orb_path).convert_alpha()
+                for i in range(4):
+                    frames.append(sheet.subsurface((i * 32, 0, 32, 32)))
+            except Exception:
+                frames = []
+        elif fallback_path.exists():
+            try:
+                sheet = pygame.image.load(str(fallback_path)).convert_alpha()
+                for i in range(4):
+                    frames.append(sheet.subsurface((i * 32, 0, 32, 32)))
+            except Exception:
+                frames = []
 
-class FallingRock(pygame.sprite.Sprite):
-    effect = "kill"
-
-    def __init__(self, x: int, y: int):
-        super().__init__()
-        try:
-            self.image = pygame.image.load(OBJECT_DIR / "rock.png").convert_alpha()
-        except pygame.error:
-            self.image = pygame.Surface((24, 24), pygame.SRCALPHA)
-            # Main rock shape
-            pygame.draw.circle(self.image, (100, 90, 80), (12, 12), 12)
-            # Cracks and details
-            pygame.draw.line(self.image, (70, 60, 50), (5, 5), (18, 18), 2)
-            pygame.draw.circle(self.image, (130, 120, 110), (8, 16), 3)
-            # Outline
-            pygame.draw.circle(self.image, (50, 40, 30), (12, 12), 12, 1)
-        self.rect = self.image.get_rect(topleft=(x, y))
-        self.fall_speed = 0
-
-    def update(self) -> None:
-        # Increase rock fall frequency in world 2
-        fall_chance = 0.01
-        try:
-            import main
-            if hasattr(main, 'game_instance') and hasattr(main.game_instance, 'current_world'):
-                if main.game_instance.current_world == 2:
-                    fall_chance = 0.04  # 4x more frequent in world 2
-        except Exception:
-            pass
-        if self.fall_speed == 0 and random.random() < fall_chance:
-            self.fall_speed = 6
-        self.rect.y += self.fall_speed
-        if self.rect.top > SCREEN_HEIGHT:
-            self.kill()
-
-
-class QuicksandTile(pygame.sprite.Sprite):
-    effect = "slow"
-
-    def __init__(self, x: int, y: int):
-        super().__init__()
-        try:
-            self.image = pygame.image.load(OBJECT_DIR / "quicksand.png").convert_alpha()
-        except pygame.error:
-            self.image = pygame.Surface((32, 16), pygame.SRCALPHA)
-            base_color = (190, 160, 90)
-            highlight = (220, 190, 120)
-            self.image.fill(base_color)
-            # Add some texture
-            for i in range(10):
-                self.image.set_at((random.randint(0, 31), random.randint(0, 15)), highlight)
-        self.rect = self.image.get_rect(topleft=(x, y))
-
-
-class Icicle(pygame.sprite.Sprite):
-    effect = "kill"
-
-    def __init__(self, x: int, y: int):
-        super().__init__()
-        try:
-            self.image = pygame.image.load(OBJECT_DIR / "icicle.png").convert_alpha()
-        except pygame.error:
-            self.image = pygame.Surface((16, 32), pygame.SRCALPHA)
-            # Gradient fill for icy look
-            for i in range(32):
-                alpha = 255 - (i * 6)
-                color = (180, 220, 255, alpha)
-                pygame.draw.line(self.image, color, (0, i), (15, i))
-            pygame.draw.polygon(self.image, (220, 240, 255), [(0, 0), (8, 32), (16, 0)])
-        self.rect = self.image.get_rect(topleft=(x, y))
-
-
-class LavaBubble(pygame.sprite.Sprite):
-    effect = "kill"
-    _ASSETS: Dict[int, List[pygame.Surface]] = {}
-
-    @classmethod
-    def load_assets(cls, world: int, force_reload: bool = False) -> None:
-        if world in cls._ASSETS and not force_reload:
-            return
-        try:
-            sheet = pygame.image.load(str(ASSET_DIR / "objects" / "lava_bubble.png")).convert_alpha()
-            frames = []
-            for i in range(4):  # 4 animation frames
-                frames.append(sheet.subsurface((i * 32, 0, 32, 32)))
-            cls._ASSETS[world] = frames
-        except (pygame.error, FileNotFoundError):
-            # Fallback: Create animated procedural bubble
-            frames = []
+        if not frames:
             for i in range(4):
                 surface = pygame.Surface((32, 32), pygame.SRCALPHA)
                 pulse = 1.0 + 0.1 * math.sin(i / 4 * math.tau)
-                pygame.draw.circle(surface, (255, 100, 0, 100), (16, 16), int(14 * pulse))
-                pygame.draw.circle(surface, (255, 180, 40), (16, 16), int(11 * pulse))
-                pygame.draw.circle(surface, (255, 255, 150), (16, 16), int(5 * pulse))
+                pygame.draw.circle(surface, (*base_color, 100), (16, 16), int(14 * pulse))
+                pygame.draw.circle(surface, (255, 255, 255), (16, 16), int(5 * pulse))
                 frames.append(surface)
-            cls._ASSETS[world] = frames
 
-    def __init__(self, x: int, y: int, world: int = 1):
-        super().__init__()
-        self.world = world
-        self.load_assets(world)
-        self.frame = 0
-        self.frame_timer = 0
-        self.image = self._ASSETS[world][0]
-        self.rect = self.image.get_rect(topleft=(x, y))
-        self.base_y = y
-        self.bob_offset = 0
-        self.bob_speed = 2
+        Hazard._ORB_ASSETS[key] = frames
+        return frames
 
+    @staticmethod
+    def _load_icicle_frames(world: int) -> List[pygame.Surface]:
+        cache_key = f"_ICICLE_FRAMES_{world}"
+        if hasattr(Hazard, cache_key):
+            return getattr(Hazard, cache_key)
+        frames: List[pygame.Surface] = []
+        icicle_path = ASSET_DIR / "objects" / f"world{world}" / "icicle.png"
+        fallback_path = OBJECT_DIR / "icicle.png"
+        if icicle_path.exists():
+            try:
+                sheet = pygame.image.load(icicle_path).convert_alpha()
+                for i in range(4):
+                    frames.append(sheet.subsurface((i * 32, 0, 32, 32)))
+            except Exception:
+                frames = []
+        elif fallback_path.exists():
+            try:
+                sheet = pygame.image.load(fallback_path).convert_alpha()
+                for i in range(4):
+                    frames.append(sheet.subsurface((i * 32, 0, 32, 32)))
+            except Exception:
+                frames = []
+        if not frames:
+            for i in range(4):
+                surface = pygame.Surface((32, 32), pygame.SRCALPHA)
+                pygame.draw.polygon(surface, (200, 220, 255), [(16, 0), (0, 32), (32, 32)])
+                pygame.draw.line(surface, (255, 255, 255), (16, 0), (16, 32), 2)
+                frames.append(surface)
+        setattr(Hazard, cache_key, frames)
+        return frames
 
-class WindOrb(pygame.sprite.Sprite):
-    effect = "boost"
+    @staticmethod
+    def _load_electric_images(world: int) -> Tuple[pygame.Surface, pygame.Surface]:
+        tile_path = ASSET_DIR / "objects" / f"world{world}" / "electric_tile.png"
+        fallback_path = OBJECT_DIR / "electric_tile.png"
+        inactive = pygame.Surface((32, 32), pygame.SRCALPHA)
+        active = pygame.Surface((32, 32), pygame.SRCALPHA)
+        if tile_path.exists():
+            try:
+                base = pygame.image.load(str(tile_path)).convert_alpha()
+                base = pygame.transform.smoothscale(base, (32, 32))
+                inactive = base
+                active = base.copy()
+                active.fill((255, 255, 120, 160), special_flags=pygame.BLEND_RGBA_ADD)
+                return inactive, active
+            except Exception:
+                pass
+        elif fallback_path.exists():
+            try:
+                base = pygame.image.load(str(fallback_path)).convert_alpha()
+                base = pygame.transform.smoothscale(base, (32, 32))
+                inactive = base
+                active = base.copy()
+                active.fill((255, 255, 120, 160), special_flags=pygame.BLEND_RGBA_ADD)
+                return inactive, active
+            except Exception:
+                pass
+        inactive.fill((40, 40, 80))
+        pygame.draw.rect(inactive, (80, 180, 255), (0, 6, 32, 4))
+        pygame.draw.line(inactive, (80, 180, 255), (4, 0), (4, 15), 1)
+        pygame.draw.line(inactive, (80, 180, 255), (28, 0), (28, 15), 1)
+        active = inactive.copy()
+        active.fill((255, 255, 100), special_flags=pygame.BLEND_RGBA_ADD)
+        return inactive, active
 
-    def __init__(self, x: int, y: int):
-        super().__init__()
-        self.base_pos = pygame.Vector2(x, y)
-        try:
-            self.image = pygame.image.load(OBJECT_DIR / "wind_orb.png").convert_alpha()
-        except pygame.error:
-            self.image = pygame.Surface((24, 24), pygame.SRCALPHA)
-            # Outer transparent layer
-            pygame.draw.circle(self.image, (150, 255, 255, 80), (12, 12), 12)
-            # Inner core with some detail
-            pygame.draw.circle(self.image, (220, 255, 255), (12, 12), 8)
-            pygame.draw.line(self.image, (180, 240, 240), (6, 12), (18, 12), 2)
-        self.rect = self.image.get_rect(topleft=(x, y))
-        self.timer = random.randint(0, 60)
+    @staticmethod
+    def _load_rock_surface(world: int) -> pygame.Surface:
+        rock_path = ASSET_DIR / "objects" / f"world{world}" / "rock.png"
+        fallback_path = OBJECT_DIR / "rock.png"
+        if rock_path.exists():
+            try:
+                return pygame.image.load(rock_path).convert_alpha()
+            except Exception:
+                pass
+        if fallback_path.exists():
+            try:
+                return pygame.image.load(fallback_path).convert_alpha()
+            except Exception:
+                pass
+        surface = pygame.Surface((24, 24), pygame.SRCALPHA)
+        pygame.draw.circle(surface, (100, 90, 80), (12, 12), 12)
+        pygame.draw.line(surface, (70, 60, 50), (5, 5), (18, 18), 2)
+        pygame.draw.circle(surface, (130, 120, 110), (8, 16), 3)
+        pygame.draw.circle(surface, (50, 40, 30), (12, 12), 12, 1)
+        return surface
+
+    @staticmethod
+    def _load_quicksand_surface(world: int) -> pygame.Surface:
+        quicksand_path = ASSET_DIR / "objects" / f"world{world}" / "quicksand.png"
+        fallback_path = OBJECT_DIR / "quicksand.png"
+        if quicksand_path.exists():
+            try:
+                return pygame.image.load(quicksand_path).convert_alpha()
+            except Exception:
+                pass
+        if fallback_path.exists():
+            try:
+                return pygame.image.load(fallback_path).convert_alpha()
+            except Exception:
+                pass
+        surface = pygame.Surface((32, 16), pygame.SRCALPHA)
+        base_color = (190, 160, 90)
+        highlight = (220, 190, 120)
+        surface.fill(base_color)
+        for _ in range(10):
+            surface.set_at((random.randint(0, 31), random.randint(0, 15)), highlight)
+        return surface
+
+    @staticmethod
+    def _load_glitch_surface(world: int) -> pygame.Surface:
+        glitch_path = ASSET_DIR / "objects" / f"world{world}" / "glitch_cube.png"
+        fallback_path = OBJECT_DIR / "glitch_cube.png"
+        if glitch_path.exists():
+            try:
+                return pygame.image.load(glitch_path).convert_alpha()
+            except Exception:
+                pass
+        if fallback_path.exists():
+            try:
+                return pygame.image.load(fallback_path).convert_alpha()
+            except Exception:
+                pass
+        surface = pygame.Surface((20, 20), pygame.SRCALPHA)
+        surface.fill((120, 0, 200))
+        return surface
 
     def update(self) -> None:
-        self.timer = (self.timer + 1) % 120
-        offset = math.sin(self.timer / 120 * math.tau) * 4
-        self.rect.topleft = (self.base_pos.x, self.base_pos.y + offset)
+        if self.kind in {"lava", "wind", "ghost", "icicle"}:
+            num_frames = len(self.frames)
+            self.frame_timer = (self.frame_timer + 1) % self.frame_interval
+            if self.frame_timer == 0 and num_frames > 0:
+                self.frame = (self.frame + 1) % num_frames
+            if num_frames > 0:
+                self.image = self.frames[self.frame % num_frames]
+
+        if self.kind == "lava":
+            bob_offset = math.sin(pygame.time.get_ticks() * 0.003) * 4
+            self.rect.y = int(self.base_y + bob_offset)
+        elif self.kind == "wind":
+            self.angle = (self.angle + self.orbit_speed) % 360
+            self.rect.x = int(self.initial_x + math.cos(math.radians(self.angle)) * self.orbit_radius)
+            self.rect.y = int(self.initial_y + math.sin(math.radians(self.angle)) * self.orbit_radius)
+        elif self.kind == "electric":
+            self.timer += 1
+            if self.timer >= self.cycle_time:
+                self.timer = 0
+                self.active = not self.active
+            self.is_deadly = self.active
+            self.image = self._active_image if self.active else self._inactive_image
+        elif self.kind == "ghost":
+            if self.target:
+                dx = self.target.rect.centerx - self.rect.centerx
+                dy = self.target.rect.centery - self.rect.centery
+                dist = math.hypot(dx, dy)
+                if dist > 0:
+                    self.rect.x += (dx / dist) * self.speed
+                    self.rect.y += (dy / dist) * self.speed
+        elif self.kind == "icicle":
+            if self.falling:
+                self.fall_speed += 0.5
+                self.rect.y += self.fall_speed
+        elif self.kind == "rock":
+            fall_chance = 0.01
+            if self.world == 2:
+                fall_chance = 0.04
+            if self.fall_speed == 0 and random.random() < fall_chance:
+                self.fall_speed = 6
+            self.rect.y += self.fall_speed
+            if self.rect.top > SCREEN_HEIGHT:
+                self.kill()
+        elif self.kind == "glitch":
+            self.timer += 1
+            if pygame.time.get_ticks() % 2 == 0:
+                return
+            for _ in range(2):
+                color = random.choice([CYAN, MAGENTA, (255, 255, 0)])
+                w, h = random.randint(1, 5), random.randint(1, 5)
+                px, py = random.randint(0, self.image.get_width() - 2), random.randint(0, self.image.get_height() - 2)
+                pygame.draw.rect(self.image, color, (px, py, w, h))
 
 
-class ElectricTile(pygame.sprite.Sprite):
-    effect = "kill"
+@dataclass(frozen=True)
+class HazardProfile:
+    effect: str
+    deadly: bool
+    size: Tuple[int, int]
 
-    def __init__(self, x: int, y: int):
-        super().__init__()
-        try:
-            self.inactive_image = pygame.image.load(OBJECT_DIR / "electric_tile.png").convert_alpha()
-        except pygame.error:
-            self.inactive_image = pygame.Surface((32, 16), pygame.SRCALPHA)
-            self.inactive_image.fill((40, 40, 80))
-            # Add some circuit-like lines
-            pygame.draw.rect(self.inactive_image, (80, 180, 255), (0, 6, 32, 4))
-            pygame.draw.line(self.inactive_image, (80, 180, 255), (4, 0), (4, 15), 1)
-            pygame.draw.line(self.inactive_image, (80, 180, 255), (28, 0), (28, 15), 1)
-        
-        self.active_image = self.inactive_image.copy()
-        pygame.draw.rect(self.active_image, (255, 255, 100), (0, 0, 32, 16))
-        self.image = self.inactive_image
-        self.rect = self.image.get_rect(topleft=(x, y))
+
+HAZARD_PROFILES: Dict[str, HazardProfile] = {
+    "spike": HazardProfile("kill", True, (32, 16)),
+    "rock": HazardProfile("kill", True, (24, 24)),
+    "quicksand": HazardProfile("slow", False, (32, 16)),
+    "icicle": HazardProfile("kill", True, (32, 32)),
+    "lava": HazardProfile("kill", True, (32, 32)),
+    "wind": HazardProfile("kill", True, (32, 32)),
+    "electric": HazardProfile("kill", True, (32, 32)),
+    "ghost": HazardProfile("kill", True, (32, 32)),
+    "glitch": HazardProfile("kill", True, (20, 20)),
+}
+
+
+def create_hazard(
+    kind: str,
+    x: int,
+    y: int,
+    *,
+    world: int = 1,
+    direction: str = "up",
+) -> Hazard:
+    return Hazard(kind, x, y, world=world, direction=direction)
 
 
 class Boost(pygame.sprite.Sprite):
@@ -3878,54 +4026,13 @@ class Spring(pygame.sprite.Sprite):
             pygame.draw.rect(self.image, (100, 200, 100), (4, 4, 16, 8))
             pygame.draw.line(self.image, (80, 80, 80), (4, 12), (20, 12), 2)
         self.rect = self.image.get_rect(topleft=(x, y))
+
     def update(self):
         pass
+
     def bounce(self, player):
         # Apply a strong upward velocity to the player
         player.velocity.y = -15  # Adjust as needed for game feel
-
-    def __init__(self, x: int, y: int):
-        super().__init__()
-        try:
-            self.image = pygame.image.load(OBJECT_DIR / "ghost_orb.png").convert_alpha()
-        except pygame.error:
-            self.image = pygame.Surface((24, 24), pygame.SRCALPHA)
-            # Draw a wisp-like shape
-            pygame.draw.circle(self.image, (200, 100, 255, 50), (12, 12), 11)
-            pygame.draw.circle(self.image, (220, 150, 255, 100), (12, 12), 8)
-            pygame.draw.circle(self.image, (255, 255, 255, 150), (12, 12), 4)
-        self.rect = self.image.get_rect(topleft=(x, y))
-        self.timer = random.randint(0, 90)
-
-    def update(self) -> None:
-        self.timer = (self.timer + 1) % 90
-        alpha = 120 + int(math.sin(self.timer / 90 * math.tau) * 60)
-        self.image.set_alpha(alpha)
-
-
-class GlitchCube(pygame.sprite.Sprite):
-    effect = "kill"
-
-    def __init__(self, x: int, y: int):
-        super().__init__()
-        try:
-            self.image = pygame.image.load(OBJECT_DIR / "glitch_cube.png").convert_alpha()
-        except pygame.error:
-            self.image = pygame.Surface((20, 20), pygame.SRCALPHA)
-        self.rect = self.image.get_rect(topleft=(x, y))
-        self.timer = 0
-        self.update()
-
-    def update(self) -> None:
-        self.timer += 1
-        if pygame.time.get_ticks() % 2 == 0: # to make it less flashy
-            return
-        # Draw random glitchy rects on top of the image
-        for _ in range(2):
-            color = random.choice([CYAN, MAGENTA, (255, 255, 0)])
-            w, h = random.randint(1, 5), random.randint(1, 5)
-            px, py = random.randint(0, 18), random.randint(0, 18)
-            pygame.draw.rect(self.image, color, (px, py, w, h))
 
 
 class SpecialTile(pygame.sprite.Sprite):
@@ -4004,25 +4111,13 @@ class WorldTheme:
     decoration_types: List[str]
     music_track: str
     
-    def create_hazard(self, x: int, y: int, difficulty: float) -> Optional[pygame.sprite.Sprite]:
+    def create_hazard(self, x: int, y: int, difficulty: float, world: int = 1) -> Optional[pygame.sprite.Sprite]:
         """Creates a world-specific hazard at the given position."""
         if not self.hazard_types:
             return None
-        
+
         hazard_type = random.choice(self.hazard_types)
-        if hazard_type == "spike":
-            return Spike(x, y)
-        elif hazard_type == "lava":
-            return LavaBubble(x, y)
-        elif hazard_type == "icicle":
-            return Icicle(x, y)
-        elif hazard_type == "wind":
-            return WindOrb(x, y)
-        elif hazard_type == "electric":
-            return ElectricTile(x, y)
-        elif hazard_type == "ghost":
-            return GhostOrb(x, y)
-        return None
+        return create_hazard(hazard_type, x, y, world=world)
 
 
 # Define the theme for each world
@@ -4110,375 +4205,6 @@ WORLD_THEMES = {
 }
 
 
-class Hazard(pygame.sprite.Sprite):
-    """Base class for all hazards in the game."""
-    def __init__(self, x: int, y: int):
-        super().__init__()
-        self.image = pygame.Surface((32, 32))
-        self.rect = self.image.get_rect()
-        self.rect.x = x
-        self.rect.y = y
-        self.animation_frame = 0
-        self.animation_speed = 0.2
-        self.is_deadly = True
-
-    def update(self):
-        """Update the hazard's state and animation."""
-        self.animation_frame += self.animation_speed
-        if self.animation_frame >= 4:
-            self.animation_frame = 0
-
-
-class Spike(Hazard):
-    """A simple spike hazard that causes instant death on contact.
-
-    This implementation supports world-themed assets and directional
-    variants (up/down/left/right). It loads per-world sprite sheets from
-    `assets/objects/world{n}/spike.png` when available and falls back to a
-    generated triangle if not.
-    """
-    _ASSETS: Dict[int, Dict[str, pygame.Surface]] = {}
-
-    @classmethod
-    def _load_assets(cls, world: int) -> Dict[str, pygame.Surface]:
-        if world in cls._ASSETS:
-            return cls._ASSETS[world]
-
-        assets: Dict[str, pygame.Surface] = {}
-        size = (32, 16)
-        spike_path = ASSET_DIR / "objects" / f"world{world}" / "spike.png"
-        fallback_path = OBJECT_DIR / "spike.png"
-        if spike_path.exists():
-            try:
-                sheet = pygame.image.load(spike_path).convert_alpha()
-                # Load each direction from sprite sheet (up, down, left, right) - assumes horizontal strip
-                for i, direction in enumerate(["up", "down", "left", "right"]): # This assumes a horizontal strip
-                    sprite = pygame.Surface(size, pygame.SRCALPHA)
-                    sprite.blit(sheet, (0, 0), (i * size[0], 0, *size))
-                    assets[direction] = sprite
-            except Exception as e:
-                print(f"Failed to load spike assets for world {world}: {e}")
-        elif fallback_path.exists():
-            try:
-                base = pygame.image.load(str(fallback_path)).convert_alpha()
-                base = pygame.transform.smoothscale(base, size)
-                assets["up"] = base
-                assets["down"] = pygame.transform.rotate(base, 180)
-                assets["left"] = pygame.transform.rotate(base, 90)
-                assets["right"] = pygame.transform.rotate(base, -90)
-            except Exception as e:
-                print(f"Failed to load spike fallback asset: {e}")
-
-        if not assets:
-            # Fallback to generated spikes with world-themed colors
-            world_theme = WORLD_THEMES.get(world)
-            base_color = (180, 180, 180)
-            highlight_color = (220, 220, 220)
-            if world_theme:
-                bg_color = world_theme.background_color
-                try:
-                    hue, sat, val = colorsys.rgb_to_hsv(bg_color[0]/255, bg_color[1]/255, bg_color[2]/255)
-                    spike_rgb = colorsys.hsv_to_rgb(hue, min(1.0, sat + 0.2), max(0.2, val - 0.3))
-                    base_color = tuple(int(x * 255) for x in spike_rgb)
-                    highlight_color = _brighten(base_color, 40)
-                except Exception:
-                    pass
-            
-            up = pygame.Surface(size, pygame.SRCALPHA)
-            pygame.draw.polygon(up, base_color, [(0, 16), (16, 0), (32, 16)])
-            pygame.draw.line(up, highlight_color, (16, 2), (2, 15), 2)
-            assets["up"] = up
-            
-            down = pygame.Surface(size, pygame.SRCALPHA)
-            pygame.draw.polygon(down, base_color, [(0, 0), (16, 16), (32, 0)])
-            pygame.draw.line(down, highlight_color, (16, 14), (2, 1), 2)
-            assets["down"] = down
-            
-            left = pygame.Surface((16, 32), pygame.SRCALPHA)
-            pygame.draw.polygon(left, base_color, [(16, 0), (0, 16), (16, 32)])
-            pygame.draw.line(left, highlight_color, (14, 2), (1, 16), 2)
-            assets["left"] = left
-            
-            right = pygame.Surface((16, 32), pygame.SRCALPHA)
-            pygame.draw.polygon(right, base_color, [(0, 0), (16, 16), (0, 32)])
-            pygame.draw.line(right, highlight_color, (2, 2), (15, 16), 2)
-            assets["right"] = right
-
-        cls._ASSETS[world] = assets
-        return assets
-
-    def __init__(self, x: int, y: int, direction: str = "up", world: int = 1):
-        super().__init__(x, y)
-        assets = self._load_assets(world)
-        # pick image for direction, default to 'up' if missing
-        self.image = assets.get(direction, assets.get("up"))
-        if not self.image: # Ultimate fallback
-            self.image = pygame.Surface((32,16))
-            self.image.fill(RED)
-        self.rect = self.image.get_rect(topleft=(x, y))
-
-
-class LavaBubble(Hazard):
-    _ASSETS: Dict[int, List[pygame.Surface]] = {}
-
-    @classmethod
-    def _load_assets(cls, world: int) -> List[pygame.Surface]:
-        if world in cls._ASSETS:
-            return cls._ASSETS[world]
-        frames = []
-        orb_path = ASSET_DIR / "objects" / f"world{world}" / "lava_bubble.png"
-        fallback_path = OBJECT_DIR / "lava_bubble.png"
-        if orb_path.exists():
-            try:
-                sheet = pygame.image.load(orb_path).convert_alpha()
-                for i in range(4):
-                    frames.append(sheet.subsurface((i * 32, 0, 32, 32)))
-            except Exception as e:
-                print(f"Failed to load orb assets for world {world}: {e}")
-        elif fallback_path.exists():
-            try:
-                sheet = pygame.image.load(str(fallback_path)).convert_alpha()
-                for i in range(4):
-                    frames.append(sheet.subsurface((i * 32, 0, 32, 32)))
-            except Exception as e:
-                print(f"Failed to load lava bubble fallback asset: {e}")
-        if not frames:
-            # Fallback: animated procedural orb
-            for i in range(4):
-                surface = pygame.Surface((32, 32), pygame.SRCALPHA)
-                pulse = 1.0 + 0.1 * math.sin(i / 4 * math.tau)
-                pygame.draw.circle(surface, (255, 100, 0, 100), (16, 16), int(14 * pulse))
-                pygame.draw.circle(surface, (255, 180, 40), (16, 16), int(11 * pulse))
-                pygame.draw.circle(surface, (255, 255, 150), (16, 16), int(5 * pulse))
-                frames.append(surface)
-        cls._ASSETS[world] = frames
-        return frames
-
-    def __init__(self, x: int, y: int, direction: str = "up", world: int = 1):
-        super().__init__(x, y)
-        self.world = world
-        self.direction = direction
-        self.assets = self._load_assets(world)
-        self.frame = 0
-        self.frame_timer = 0
-        self.image = self.assets[0] if self.assets else pygame.Surface((32, 32))
-        self.rect = self.image.get_rect(topleft=(x, y))
-        self.base_y = y
-        self.bob_offset = 0
-        self.bob_speed = 2
-
-    def update(self):
-        # Animate orb
-        num_frames = len(self.assets)
-        self.frame_timer = (self.frame_timer + 1) % 8
-        if self.frame_timer == 0 and num_frames > 0:
-            self.frame = (self.frame + 1) % num_frames
-        if num_frames > 0:
-            self.image = self.assets[self.frame % num_frames]
-        # Bob up and down
-        self.bob_offset = math.sin(pygame.time.get_ticks() * 0.003) * 4
-        self.rect.y = self.base_y + self.bob_offset
-
-
-class WindOrb(Hazard):
-    """A floating orb that creates wind currents and is deadly like a spike."""
-    _ASSETS: Dict[int, List[pygame.Surface]] = {}
-
-    @classmethod
-    def _load_assets(cls, world: int) -> List[pygame.Surface]:
-        if world in cls._ASSETS:
-            return cls._ASSETS[world]
-        frames = []
-        orb_path = ASSET_DIR / "objects" / "wind_orb.png"
-        if orb_path.exists():
-            try:
-                sheet = pygame.image.load(orb_path).convert_alpha()
-                for i in range(4):
-                    frames.append(sheet.subsurface((i * 32, 0, 32, 32)))
-            except Exception as e:
-                print(f"Failed to load wind orb assets for world {world}: {e}")
-        if not frames:
-            for i in range(4):
-                surface = pygame.Surface((32, 32), pygame.SRCALPHA)
-                pygame.draw.circle(surface, (150, 255, 255, 120), (16, 16), 14)
-                pygame.draw.circle(surface, (220, 255, 255), (16, 16), 11)
-                pygame.draw.circle(surface, (255, 255, 255), (16, 16), 5)
-                frames.append(surface)
-        cls._ASSETS[world] = frames
-        return frames
-
-    def __init__(self, x: int, y: int, world: int = 1):
-        super().__init__(x, y)
-        self.world = world
-        self.assets = self._load_assets(world)
-        self.frame = 0
-        self.frame_timer = 0
-        self.image = self.assets[0] if self.assets else pygame.Surface((32, 32))
-        self.rect = self.image.get_rect(topleft=(x, y))
-        self.initial_x = x
-        self.initial_y = y
-        self.angle = 0
-        self.orbit_radius = 20
-        self.orbit_speed = 2
-        self.is_deadly = True
-
-    def update(self):
-        # Animate orb
-        num_frames = len(self.assets)
-        self.frame_timer = (self.frame_timer + 1) % 8
-        if self.frame_timer == 0 and num_frames > 0:
-            self.frame = (self.frame + 1) % num_frames
-        if num_frames > 0:
-            self.image = self.assets[self.frame % num_frames]
-        # Orbit in a circular pattern
-        self.angle = (self.angle + self.orbit_speed) % 360
-        self.rect.x = self.initial_x + math.cos(math.radians(self.angle)) * self.orbit_radius
-        self.rect.y = self.initial_y + math.sin(math.radians(self.angle)) * self.orbit_radius
-
-
-class Icicle(Hazard):
-    """An icicle that falls when the player gets near."""
-    _ASSETS: List[pygame.Surface] = []
-
-    @classmethod
-    def _load_assets(cls):
-        if cls._ASSETS:
-            return cls._ASSETS
-        frames = []
-        icicle_path = ASSET_DIR / "objects" / "icicle.png"
-        if icicle_path.exists():
-            try:
-                sheet = pygame.image.load(icicle_path).convert_alpha()
-                for i in range(4):
-                    frames.append(sheet.subsurface((i * 32, 0, 32, 32)))
-            except Exception as e:
-                print(f"Failed to load icicle assets: {e}")
-        if not frames:
-            for i in range(4):
-                surface = pygame.Surface((32, 32), pygame.SRCALPHA)
-                pygame.draw.polygon(surface, (200, 220, 255), [(16, 0), (0, 32), (32, 32)])
-                pygame.draw.line(surface, (255, 255, 255), (16, 0), (16, 32), 2)
-                frames.append(surface)
-        cls._ASSETS = frames
-        return frames
-
-    def __init__(self, x: int, y: int):
-        super().__init__(x, y)
-        self.assets = self._load_assets()
-        self.frame = 0
-        self.frame_timer = 0
-        self.image = self.assets[0] if self.assets else pygame.Surface((32, 32))
-        self.rect = self.image.get_rect(topleft=(x, y))
-        self.falling = False
-        self.fall_speed = 0
-        self.is_deadly = True
-
-    def update(self):
-        # Animate icicle
-        num_frames = len(self.assets)
-        self.frame_timer = (self.frame_timer + 1) % 8
-        if self.frame_timer == 0 and num_frames > 0:
-            self.frame = (self.frame + 1) % num_frames
-        if num_frames > 0:
-            self.image = self.assets[self.frame % num_frames]
-        if self.falling:
-            self.fall_speed += 0.5
-            self.rect.y += self.fall_speed
-
-
-class ElectricTile(Hazard):
-    """An electrified tile that periodically activates."""
-    def __init__(self, x: int, y: int):
-        super().__init__(x, y)
-        self._inactive_image = None
-        self._active_image = None
-        tile_path = OBJECT_DIR / "electric_tile.png"
-        if tile_path.exists():
-            try:
-                base = pygame.image.load(str(tile_path)).convert_alpha()
-                base = pygame.transform.smoothscale(base, (32, 32))
-                self._inactive_image = base
-                active = base.copy()
-                active.fill((255, 255, 120, 160), special_flags=pygame.BLEND_RGBA_ADD)
-                self._active_image = active
-            except Exception:
-                self._inactive_image = None
-                self._active_image = None
-        if self._inactive_image is None:
-            self.image.fill((100, 100, 255))
-            self._inactive_image = self.image.copy()
-            active = self.image.copy()
-            active.fill((255, 255, 0))
-            self._active_image = active
-        self.active = False
-        self.timer = 0
-        self.cycle_time = 120  # frames
-
-    def update(self):
-        super().update()
-        self.timer += 1
-        if self.timer >= self.cycle_time:
-            self.timer = 0
-            self.active = not self.active
-        self.is_deadly = self.active
-        if self.active:
-            self.image = self._active_image
-        else:
-            self.image = self._inactive_image
-
-
-class GhostOrb(Hazard):
-    """A ghost orb that follows the player."""
-    _ASSETS: List[pygame.Surface] = []
-
-    @classmethod
-    def _load_assets(cls):
-        if cls._ASSETS:
-            return cls._ASSETS
-        frames = []
-        ghost_path = ASSET_DIR / "objects" / "ghost_orb.png"
-        if ghost_path.exists():
-            try:
-                sheet = pygame.image.load(ghost_path).convert_alpha()
-                for i in range(4):
-                    frames.append(sheet.subsurface((i * 32, 0, 32, 32)))
-            except Exception as e:
-                print(f"Failed to load ghost orb assets: {e}")
-        if not frames:
-            for i in range(4):
-                surface = pygame.Surface((32, 32), pygame.SRCALPHA)
-                pygame.draw.circle(surface, (200, 200, 255, 120), (16, 16), 14)
-                pygame.draw.circle(surface, (255, 255, 255), (16, 16), 11)
-                frames.append(surface)
-        cls._ASSETS = frames
-        return frames
-
-    def __init__(self, x: int, y: int):
-        super().__init__(x, y)
-        self.assets = self._load_assets()
-        self.frame = 0
-        self.frame_timer = 0
-        self.image = self.assets[0] if self.assets else pygame.Surface((32, 32))
-        self.rect = self.image.get_rect(topleft=(x, y))
-        self.speed = 2
-        self.target = None
-        self.is_deadly = True
-
-    def update(self):
-        # Animate ghost orb
-        num_frames = len(self.assets)
-        self.frame_timer = (self.frame_timer + 1) % 8
-        if self.frame_timer == 0 and num_frames > 0:
-            self.frame = (self.frame + 1) % num_frames
-        if num_frames > 0:
-            self.image = self.assets[self.frame % num_frames]
-        if self.target:
-            dx = self.target.rect.centerx - self.rect.centerx
-            dy = self.target.rect.centery - self.rect.centery
-            dist = math.sqrt(dx * dx + dy * dy)
-            if dist > 0:
-                self.rect.x += (dx / dist) * self.speed
-                self.rect.y += (dy / dist) * self.speed
 
 
 class Checkpoint(pygame.sprite.Sprite):
@@ -4559,25 +4285,10 @@ class LevelContent:
 def create_world_object(world: int, x: int, y: int) -> pygame.sprite.Sprite:
     options = WORLD_THEME_OBJECTS.get(world) or [WORLD_SPECIALS.get(world, "coin")]
     name = random.choice(options)
-    if name == "spike":
-        return Spike(x, y, world=world)
-    if name == "rock":
-        return FallingRock(x, y)
-    if name == "quicksand":
-        return QuicksandTile(x, y)
-    if name == "icicle":
-        return Icicle(x, y)
-    if name == "lava":
-        return LavaBubble(x, y, world=world)
-    if name == "wind":
-        return WindOrb(x, y, world=world)
-    if name == "electric":
-        return ElectricTile(x, y)
-    if name == "ghost":
-        return GhostOrb(x, y)
-    if name == "glitch":
-        return GlitchCube(x, y)
+    if name in {"spike", "rock", "quicksand", "icicle", "lava", "wind", "electric", "ghost", "glitch"}:
+        return create_hazard(name, x, y, world=world)
     return Coin(x, y)
+
 
 
 
@@ -4827,7 +4538,6 @@ def run_pause_menu(scene: "GameplayScene") -> str:
     menu.panel_border_color = (200, 220, 255)
 
     scene.game._in_pause_menu = True
-    scene.game.pause_speedrun(True)
     # Do not clear flight cheat; gameplay will reapply if enabled
     if hasattr(scene, 'player') and hasattr(scene.player, 'disable_flight'):
         scene.player.disable_flight()
@@ -4838,7 +4548,6 @@ def run_pause_menu(scene: "GameplayScene") -> str:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 scene.game.quit()
-                scene.game.pause_speedrun(False)
                 scene.game._in_pause_menu = False
                 return "quit"
             result = menu.handle_event(event)
@@ -4846,7 +4555,6 @@ def run_pause_menu(scene: "GameplayScene") -> str:
                 scene.game._in_pause_menu = False
                 return result()
             if result == "exit":
-                scene.game.pause_speedrun(False)
                 scene.game._in_pause_menu = False
                 return result_holder["value"]
 
@@ -4883,7 +4591,6 @@ def run_pause_menu(scene: "GameplayScene") -> str:
         pygame.display.flip()
         scene.game.clock.tick(FPS)
 
-    scene.game.pause_speedrun(False)
     return "quit"
 
 
@@ -4893,7 +4600,6 @@ def run_pause_menu(scene: "GameplayScene") -> str:
 
 
 def play_glitch_portal_cutscene(game: "Game") -> None:
-    game.pause_speedrun(True)
     game.sound.play_event("glitch")
     glitch_flash(game.screen, game.clock, 0.25, game.settings["glitch_fx"])
     for frame in range(180):
@@ -4917,7 +4623,6 @@ def play_glitch_portal_cutscene(game: "Game") -> None:
             )
         pygame.display.flip()
         game.clock.tick(FPS)
-    game.pause_speedrun(False)
 
 def play_first_entry_cutscene(game: "Game") -> None:
     """
@@ -4928,7 +4633,6 @@ def play_first_entry_cutscene(game: "Game") -> None:
     game._suppress_accept_until = 0.0
     # Ensure no stale suppression blocks the prompt
     game._suppress_accept_until = 0.0
-    game.pause_speedrun(True)
     clock = game.clock
     try:
         game.sound.play_event("world_transition")
@@ -4960,7 +4664,6 @@ def play_first_entry_cutscene(game: "Game") -> None:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 game.quit()
-                game.pause_speedrun(False)
                 return
             # Always allow immediate accept via controller/keyboard/mouse once this scene is active
             if event.type == pygame.JOYBUTTONDOWN and event.button in (0, 7):
@@ -5067,9 +4770,7 @@ def play_first_entry_cutscene(game: "Game") -> None:
     # Suppress immediate accept in the next scene and clear any leftover inputs
     game._suppress_accept_until = time.time() + 0.4
     pygame.event.clear()
-    game.pause_speedrun(False)
 def play_final_cutscene(game: "Game") -> None:
-    game.pause_speedrun(True)
     # Use SoundManager for SFX
     rumble_playing = False
     boom_played = False
@@ -5098,7 +4799,6 @@ def play_final_cutscene(game: "Game") -> None:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 game.quit()
-                game.pause_speedrun(False)
                 return
 
         elapsed = time.time() - start_time
@@ -5214,7 +4914,6 @@ def play_final_cutscene(game: "Game") -> None:
         game.clock.tick(40)
 
     game.sound.stop_all()
-    game.pause_speedrun(False)
 
 
 def conclude_campaign(game: "Game") -> None:
@@ -5292,27 +4991,60 @@ class LevelGenerator:
     }
 
     HAZARD_BUILDERS: Dict[str, Callable[[Platform, random.Random], Optional[pygame.sprite.Sprite]]] = {
-        "spike": lambda platform, _rng: Spike(
+        "spike": lambda platform, _rng: create_hazard(
+            "spike",
             platform.rect.centerx - 16,
             platform.rect.top - 16,
             world=getattr(platform, "world_num", 1),
         ),
-        "lava": lambda platform, _rng: LavaBubble(
+        "lava": lambda platform, _rng: create_hazard(
+            "lava",
             platform.rect.centerx - 16,
             platform.rect.top - 32,
             world=getattr(platform, "world_num", 1),
         ),
-        "icicle": lambda platform, _rng: Icicle(platform.rect.centerx - 16, platform.rect.top - 32),
-        "wind": lambda platform, _rng: WindOrb(
+        "icicle": lambda platform, _rng: create_hazard(
+            "icicle",
+            platform.rect.centerx - 16,
+            platform.rect.top - 32,
+            world=getattr(platform, "world_num", 1),
+        ),
+        "wind": lambda platform, _rng: create_hazard(
+            "wind",
             platform.rect.centerx - 16,
             platform.rect.top - 96,
             world=getattr(platform, "world_num", 1),
         ),
-        "electric": lambda platform, _rng: ElectricTile(platform.rect.centerx - 16, platform.rect.top - 20),
-        "rock": lambda platform, _rng: FallingRock(platform.rect.centerx - 12, platform.rect.top - 48),
-        "quicksand": lambda platform, _rng: QuicksandTile(platform.rect.centerx - 16, platform.rect.top - 8),
-        "ghost": lambda platform, _rng: GhostOrb(platform.rect.centerx - 16, platform.rect.top - 80),
-        "glitch": lambda platform, _rng: GlitchCube(platform.rect.centerx - 10, platform.rect.top - 24),
+        "electric": lambda platform, _rng: create_hazard(
+            "electric",
+            platform.rect.centerx - 16,
+            platform.rect.top - 20,
+            world=getattr(platform, "world_num", 1),
+        ),
+        "rock": lambda platform, _rng: create_hazard(
+            "rock",
+            platform.rect.centerx - 12,
+            platform.rect.top - 48,
+            world=getattr(platform, "world_num", 1),
+        ),
+        "quicksand": lambda platform, _rng: create_hazard(
+            "quicksand",
+            platform.rect.centerx - 16,
+            platform.rect.top - 8,
+            world=getattr(platform, "world_num", 1),
+        ),
+        "ghost": lambda platform, _rng: create_hazard(
+            "ghost",
+            platform.rect.centerx - 16,
+            platform.rect.top - 80,
+            world=getattr(platform, "world_num", 1),
+        ),
+        "glitch": lambda platform, _rng: create_hazard(
+            "glitch",
+            platform.rect.centerx - 10,
+            platform.rect.top - 24,
+            world=getattr(platform, "world_num", 1),
+        ),
     }
 
     def __init__(self, assets: AssetCache, settings: Optional[GeneratorSettings] = None):
@@ -5687,12 +5419,12 @@ class LevelGenerator:
         placed_hazard = False
         if rng.random() < object_rate:
             world_object = self._spawn_world_object(world, platform)
-            if isinstance(world_object, Spike):
+            if getattr(world_object, 'kind', None) == 'spike':
                 added = self._try_add_sprite(content, "spike", world_object, content.spikes)
                 placed_hazard = placed_hazard or added
             else:
                 added = self._try_add_sprite(content, "special", world_object, content.specials)
-                placed_hazard = placed_hazard or isinstance(world_object, Spike)
+                placed_hazard = placed_hazard or (getattr(world_object, 'kind', None) == 'spike')
             # If we successfully placed a sprite on a moving platform, make it follow
             try:
                 if added and isinstance(platform, MovingPlatform):
@@ -5753,7 +5485,7 @@ class LevelGenerator:
         sprite = create_world_object(world, platform.rect.centerx - 16, platform.rect.top - 32)
         if not hasattr(sprite, "rect"):
             return sprite
-        if isinstance(sprite, QuicksandTile):
+        if getattr(sprite, "kind", None) == "quicksand":
             sprite.rect.midtop = (platform.rect.centerx, platform.rect.top)
         else:
             sprite.rect.midbottom = (platform.rect.centerx, platform.rect.top - 4)
@@ -5762,7 +5494,7 @@ class LevelGenerator:
     def _add_hazard(self, content: LevelContent, hazard: Optional[pygame.sprite.Sprite]) -> None:
         if hazard is None or not hasattr(hazard, "rect"):
             return
-        if isinstance(hazard, Spike):
+        if getattr(hazard, 'kind', None) == 'spike':
             self._try_add_sprite(content, "spike", hazard, content.spikes)
         else:
             self._try_add_sprite(content, "hazard", hazard, content.specials)
@@ -5983,7 +5715,6 @@ class CreditScene(Scene):
         self.fade = 0.0
 
     def on_enter(self) -> None:
-        self.game.pause_speedrun(True)
         self.timer = 0.0
         self.prompt_visible = False
         self.fade = 0.0
@@ -6256,7 +5987,6 @@ class CharacterCreationScene(Scene):
         self.game.selected_character = self.character_list[self.selected_character_idx]
         self.game.world1_intro_shown = False
         self.game.progress.reset()
-        self.game.start_speedrun()
         self.game.change_scene(GameplayScene, world=1, level=1)
 
     def _update_selection(self, pos: Tuple[int, int]) -> bool:
@@ -6739,8 +6469,6 @@ class TitleScene(Scene):
 
     def continue_game(self) -> None:
         self.game.progress.load()
-        if not self.game.speedrun_active:
-            self.game.start_speedrun()
         self.game.change_scene(
             GameplayScene,
             world=self.game.progress.world,
@@ -6764,8 +6492,6 @@ class TitleScene(Scene):
         self.game.quit()
 
     def on_enter(self) -> None:
-        self.game.pause_speedrun(True)
-        self.game.stop_speedrun()
         self.game.play_music("title_theme.mp3")
         self._refresh_logo_assets()
 
@@ -8149,8 +7875,8 @@ class GameplayScene(Scene):
         specials_hit = pygame.sprite.spritecollide(self.player, self.content.specials, False)
         for special in specials_hit:
             effect = getattr(special, "effect", "collect")
-            # Kill if effect is 'kill', or is deadly, or is a LavaBubble
-            if effect == "kill" or getattr(special, "is_deadly", False) or isinstance(special, LavaBubble):
+            # Kill if effect is 'kill' or marked deadly
+            if effect == "kill" or getattr(special, "is_deadly", False):
                 sound.play_event("hazard_hit")
                 self.player.respawn()
                 self._snap_camera_to_player()
@@ -8318,14 +8044,6 @@ class GameplayScene(Scene):
 
         if self.dynamic_glitch_active and self.game.settings["glitch_fx"]:
             apply_dynamic_glitch(surface, self.dynamic_glitch_strength)
-
-        if self.game.speedrun_active:
-            timer_font = self.game.assets.font(22, True)
-            timer_text = format_time(self.game.speedrun_time())
-            timer_render = timer_font.render(timer_text, True, WHITE)
-            shadow = timer_font.render(timer_text, True, (0, 0, 0))
-            surface.blit(shadow, (18, 14))
-            surface.blit(timer_render, (16, 12))
 
 
 class BossArenaScene(Scene):
@@ -9420,7 +9138,6 @@ def play_portal_collapse_cutscene(game: "Game", portal_pos: Tuple[int, int], obj
     Finale: the portal awakens, pulls reality inside-out, detonates, then drops into the credits.
     Uses sounds if available; gracefully degrades otherwise.
     """
-    game.pause_speedrun(True)
     clock = pygame.time.Clock()
     TARGET_FPS = 60
 
@@ -9588,11 +9305,6 @@ class Game:
         self.skills = self.progress.skills.copy()
         self.cosmetics = self.progress.cosmetics.copy()
         self.running = True
-        self.speedrun_active = False
-        self.speedrun_start = 0.0
-        self.speedrun_pause_accum = 0.0
-        self.speedrun_paused = False
-        self.speedrun_pause_start = 0.0
         self.world1_intro_shown = False
         self.current_music = None
         self._last_music = None
@@ -9655,9 +9367,6 @@ class Game:
             new_scene = scene_cls
         else:
             new_scene = scene_cls(self, *args, **kwargs)
-        # Pause speedrun unless entering GameplayScene
-        if new_scene.__class__.__name__ != "GameplayScene":
-            self.pause_speedrun(True)
         self.scene = new_scene
         if hasattr(self.scene, "on_enter"):
             self.scene.on_enter()
@@ -9886,38 +9595,6 @@ class Game:
 
         pygame.quit()
         sys.exit()
-
-    def start_speedrun(self) -> None:
-        self.speedrun_active = True
-        self.speedrun_start = time.time()
-        self.speedrun_pause_accum = 0.0
-        self.speedrun_paused = False
-        self.speedrun_pause_start = 0.0
-
-    def stop_speedrun(self) -> None:
-        self.speedrun_active = False
-        self.speedrun_paused = False
-        self.speedrun_pause_start = 0.0
-        self.speedrun_pause_accum = 0.0
-
-    def pause_speedrun(self, pause: bool) -> None:
-        if not self.speedrun_active:
-            return
-        if pause and not self.speedrun_paused:
-            self.speedrun_paused = True
-            self.speedrun_pause_start = time.time()
-        elif not pause and self.speedrun_paused:
-            self.speedrun_pause_accum += time.time() - self.speedrun_pause_start
-            self.speedrun_pause_start = 0.0
-            self.speedrun_paused = False
-
-    def speedrun_time(self) -> float:
-        if not self.speedrun_active:
-            return 0.0
-        elapsed = time.time() - self.speedrun_start - self.speedrun_pause_accum
-        if self.speedrun_paused:
-            elapsed -= time.time() - self.speedrun_pause_start
-        return max(0.0, elapsed)
 
     def play_music(self, track: str, loop: int = -1, start: float = 0.0) -> None:
         if not self.settings["music"]:
