@@ -1,5 +1,5 @@
 {
-  "music": false,
+  "music": true,
   "sfx": true,
   "glitch_fx": true,
   "window_mode": "windowed",
