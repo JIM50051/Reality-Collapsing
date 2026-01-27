@@ -41,7 +41,7 @@ TRAIL_DIR = ASSET_DIR / "trails"
 INPUT_ICON_DIR = ASSET_DIR / "input buttons"
 KB_ICON_DIR = INPUT_ICON_DIR / "Keyboard_Mouse" / "Dark"
 MOUSE_ICON_DIR = KB_ICON_DIR
-XGAMEPAD_ICON_DIR = INPUT_ICON_DIR / "XGamepad" / "Default"
+CONTROLLER_ICON_DIR = INPUT_ICON_DIR / "Controller" / "Default"
 SOUND_DIR = ASSET_DIR / "sounds"
 MUSIC_DIR = ASSET_DIR / "music"
 SAVE_FILE = BASE_DIR / "save_data.txt"
@@ -400,23 +400,23 @@ def _input_icon_paths_for_token(token: str, device: str) -> Optional[List[Path]]
 
     if device == "controller":
         controller_map = {
-            "A": XGAMEPAD_ICON_DIR / "T_X_A_Color.png",
-            "B": XGAMEPAD_ICON_DIR / "T_X_B_Color.png",
-            "X": XGAMEPAD_ICON_DIR / "T_X_X_Color.png",
-            "Y": XGAMEPAD_ICON_DIR / "T_X_Y_Color.png",
-            "LB": XGAMEPAD_ICON_DIR / "T_X_LB.png",
-            "RB": XGAMEPAD_ICON_DIR / "T_X_RB.png",
-            "LT": XGAMEPAD_ICON_DIR / "T_X_LT.png",
-            "RT": XGAMEPAD_ICON_DIR / "T_X_RT.png",
-            "START": XGAMEPAD_ICON_DIR / "T_X_Share.png",
-            "BACK": XGAMEPAD_ICON_DIR / "T_X_Share-1.png",
-            "LSTICK": XGAMEPAD_ICON_DIR / "T_X_L_2D.png",
-            "RSTICK": XGAMEPAD_ICON_DIR / "T_X_R_2D.png",
-            "DPAD": XGAMEPAD_ICON_DIR / "T_X_Dpad.png",
-            "UP": XGAMEPAD_ICON_DIR / "T_X_Dpad_Up.png",
-            "DOWN": XGAMEPAD_ICON_DIR / "T_X_Dpad_Down.png",
-            "LEFT": XGAMEPAD_ICON_DIR / "T_X_Dpad_Left.png",
-            "RIGHT": XGAMEPAD_ICON_DIR / "T_X_Dpad_Right.png",
+            "A": CONTROLLER_ICON_DIR / "T_X_A_Color.png",
+            "B": CONTROLLER_ICON_DIR / "T_X_B_Color.png",
+            "X": CONTROLLER_ICON_DIR / "T_X_X_Color.png",
+            "Y": CONTROLLER_ICON_DIR / "T_X_Y_Color.png",
+            "LB": CONTROLLER_ICON_DIR / "T_X_LB.png",
+            "RB": CONTROLLER_ICON_DIR / "T_X_RB.png",
+            "LT": CONTROLLER_ICON_DIR / "T_X_LT.png",
+            "RT": CONTROLLER_ICON_DIR / "T_X_RT.png",
+            "START": CONTROLLER_ICON_DIR / "T_X_Share.png",
+            "BACK": CONTROLLER_ICON_DIR / "T_X_Share-1.png",
+            "LSTICK": CONTROLLER_ICON_DIR / "T_X_L_2D.png",
+            "RSTICK": CONTROLLER_ICON_DIR / "T_X_R_2D.png",
+            "DPAD": CONTROLLER_ICON_DIR / "T_X_Dpad.png",
+            "UP": CONTROLLER_ICON_DIR / "T_X_Dpad_Up.png",
+            "DOWN": CONTROLLER_ICON_DIR / "T_X_Dpad_Down.png",
+            "LEFT": CONTROLLER_ICON_DIR / "T_X_Dpad_Left.png",
+            "RIGHT": CONTROLLER_ICON_DIR / "T_X_Dpad_Right.png",
         }
         path = controller_map.get(key)
         return [path] if path else None
