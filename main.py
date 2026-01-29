@@ -799,6 +799,9 @@ OUTFIT_COLORS: Dict[str, Tuple[int, int, int]] = {
     "Crimson Armor": (240, 90, 90),
     "Midnight": (90, 110, 200),
     "Gold": (240, 200, 90),
+    "Aurora": (120, 235, 210),
+    "Obsidian": (70, 85, 110),
+    "Solar": (255, 210, 95),
     "Verdant": (80, 170, 110),
     "Stone": (140, 140, 150),
     "Dune": (210, 180, 120),
@@ -817,6 +820,9 @@ TRAIL_COLORS: Dict[str, Tuple[int, int, int]] = {
     "Cyber": (120, 255, 200),
     "Ghost": (200, 200, 255),
     "Inferno": (255, 140, 80),
+    "Aurora": (140, 240, 220),
+    "Obsidian": (110, 120, 150),
+    "Solar": (255, 210, 110),
     "Verdant": (120, 220, 140),
     "Stone": (180, 180, 190),
     "Dune": (240, 210, 150),
@@ -834,6 +840,9 @@ TRAIL_STYLES: Dict[str, Dict[str, Any]] = {
     "Cyber": {"life": 0.45, "size": 22, "jitter": 3, "count": 1, "tex_scale": 1.05},
     "Ghost": {"life": 0.7, "size": 26, "jitter": 2, "count": 1, "tex_scale": 1.1},
     "Inferno": {"life": 0.38, "size": 24, "jitter": 5, "count": 2, "tex_scale": 1.05},
+    "Aurora": {"life": 0.62, "size": 26, "jitter": 3, "count": 2, "tex_scale": 1.1},
+    "Obsidian": {"life": 0.68, "size": 24, "jitter": 2, "count": 1, "tex_scale": 1.0},
+    "Solar": {"life": 0.42, "size": 24, "jitter": 4, "count": 2, "tex_scale": 1.05},
     "Verdant": {"life": 0.5, "size": 24, "jitter": 4, "count": 1, "tex_scale": 1.05},
     "Stone": {"life": 0.6, "size": 22, "jitter": 2, "count": 1, "tex_scale": 1.0},
     "Dune": {"life": 0.52, "size": 23, "jitter": 4, "count": 1, "tex_scale": 1.0},
@@ -852,6 +861,9 @@ HAT_COLORS: Dict[str, Tuple[int, int, int]] = {
     "Pilot": (200, 120, 60),
     "Halo": (255, 230, 120),
     "Viking": (180, 120, 80),
+    "Aurora": (130, 210, 200),
+    "Obsidian": (85, 95, 120),
+    "Solar": (245, 200, 95),
     "Verdant": (120, 200, 140),
     "Stone": (160, 160, 170),
     "Dune": (220, 180, 120),
@@ -4863,7 +4875,7 @@ class GeneratorSettings:
     vertical_variance: ScalarRange = ScalarRange(50, 160)
     section_count: ScalarRange = ScalarRange(8, 16)
     branch_chance: ScalarRange = ScalarRange(0.05, 0.2)
-    collectible_rate: ScalarRange = ScalarRange(0.5, 0.25)
+    collectible_rate: ScalarRange = ScalarRange(0.35, 0.18)
     hazard_rate: ScalarRange = ScalarRange(0.1, 0.38)
     world_object_rate: ScalarRange = ScalarRange(0.06, 0.26)
     moving_rate: ScalarRange = ScalarRange(0.04, 0.24)
@@ -6641,6 +6653,9 @@ class CosmeticsShopScene(Scene):
             "Crimson Armor": 20,
             "Midnight": 20,
             "Gold": 25,
+            "Aurora": 28,
+            "Obsidian": 30,
+            "Solar": 32,
             "Verdant": 8,
             "Stone": 10,
             "Dune": 12,
@@ -6658,6 +6673,9 @@ class CosmeticsShopScene(Scene):
             "Pilot": 10,
             "Halo": 18,
             "Viking": 16,
+            "Aurora": 20,
+            "Obsidian": 22,
+            "Solar": 24,
             "Verdant": 8,
             "Stone": 10,
             "Dune": 12,
@@ -6675,6 +6693,9 @@ class CosmeticsShopScene(Scene):
             "Cyber": 15,
             "Ghost": 15,
             "Inferno": 18,
+            "Aurora": 20,
+            "Obsidian": 22,
+            "Solar": 24,
             "Verdant": 8,
             "Stone": 10,
             "Dune": 12,
