@@ -1297,9 +1297,7 @@ class ProgressManager:
 
 class AssetCache:
     def __init__(self):
-        # ...existing code...
         self.last_scene = None
-        # ...existing code...
         self._backgrounds: Dict[int, pygame.Surface] = {}
         self._platform_bases: Dict[int, pygame.Surface] = {}
         self._platform_scaled: Dict[Tuple[int, Tuple[int, int]], pygame.Surface] = {}
@@ -2442,28 +2440,9 @@ class Player(pygame.sprite.Sprite):
         self.health = self.max_health
         self.invuln_frames = 0
         self._was_on_ground = False
-        # Ensure flight cheat persists after respawn
-        try:
-            import main
-            if hasattr(main, 'game_instance') and hasattr(main.game_instance, 'flight_cheat_enabled'):
-                if main.game_instance.flight_cheat_enabled and hasattr(self, 'enable_flight'):
-                    self.enable_flight()
-        except Exception:
-            pass
         if self.sound:
             self.sound.play_event("player_respawn")
 
-    def enable_flight(self) -> None:
-        print("[DEBUG] Player.enable_flight() called")
-        if not self.can_fly:
-            print("[DEBUG] Player can_fly set to True")
-            self.can_fly = True
-            self.velocity.y = 0
-
-    def disable_flight(self) -> None:
-        """Disable flight if currently enabled."""
-        if self.can_fly:
-            self.can_fly = False
 
     def apply_quicksand(self) -> None:
         if self.slow_frames == 0 and self.sound:
@@ -4471,9 +4450,6 @@ def run_pause_menu(scene: "GameplayScene") -> str:
     menu.panel_border_color = (200, 220, 255)
 
     scene.game._in_pause_menu = True
-    # Do not clear flight cheat; gameplay will reapply if enabled
-    if hasattr(scene, 'player') and hasattr(scene.player, 'disable_flight'):
-        scene.player.disable_flight()
 
     while scene.game.running:
         # Poll controller so pause menu can be driven by gamepads
@@ -6256,16 +6232,6 @@ class TitleScene(Scene):
         self.game.sound.play_event("menu_confirm")
         self.game.change_scene(ShopsHubScene)
 
-    # Secret flight code: down down up up right left right left a b enter
-    _flight_code = [
-        pygame.K_DOWN, pygame.K_DOWN, pygame.K_UP, pygame.K_UP,
-        pygame.K_RIGHT, pygame.K_LEFT, pygame.K_RIGHT, pygame.K_LEFT,
-        pygame.K_a, pygame.K_b, pygame.K_RETURN
-    ]
-    _flight_progress = 0
-    # Controller flight code: up, down, up, down, A (d-pad + button)
-    _flight_code_controller = ["up", "down", "up", "down", "a"]
-    _flight_progress_controller = 0
     # Konami code: up up down down left right left right b a enter
     _konami_code = [
         pygame.K_UP, pygame.K_UP, pygame.K_DOWN, pygame.K_DOWN,
@@ -6447,16 +6413,6 @@ class TitleScene(Scene):
                     self._konami_progress = 1
                 else:
                     self._konami_progress = 0
-            # Flight cheat via keyboard sequence
-            if event.key == self._flight_code[self._flight_progress]:
-                self._flight_progress += 1
-                if self._flight_progress == len(self._flight_code):
-                    self._flight_progress = 0
-                    self.game.flight_cheat_enabled = True
-                    self.game.sound.play_event("menu_confirm")
-            else:
-                self._flight_progress = 1 if event.key == self._flight_code[0] else 0
-        # Controller flight code: use d-pad up/down and button A (assume button 0)
         if event.type == pygame.JOYHATMOTION:
             hat_dir = event.value  # (x, y)
             token = None
@@ -7367,9 +7323,7 @@ class GameplayScene(Scene):
                 print("[DEBUG] Failsafe: Enabling flight in update() because cheat is active.")
                 if hasattr(self.player, "enable_flight"):
                     self.player.enable_flight()
-        # ...existing code...
     def handle_event(self, event: pygame.event.Event) -> None:
-        # ...existing code...
         pass
     def update(self, dt: float) -> None:
         # Ensure flight cheat is always applied if enabled
@@ -7377,7 +7331,6 @@ class GameplayScene(Scene):
             if hasattr(self.player, "can_fly") and not self.player.can_fly:
                 if hasattr(self.player, "enable_flight"):
                     self.player.enable_flight()
-        # ...existing code...
     @classmethod
     def _apply_player_skills(self) -> None:
         """Sync unlocked skills to the active player instance (movement + health)."""
@@ -7494,7 +7447,6 @@ class GameplayScene(Scene):
             self.game.world1_intro_shown = True
 
     def handle_event(self, event: pygame.event.Event) -> None:
-        # ...existing code...
         if event.type == pygame.QUIT:
             self.game.quit()
         elif event.type == pygame.KEYDOWN:
