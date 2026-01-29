@@ -4241,7 +4241,9 @@ def _draw_glitch_overlay(surface: pygame.Surface) -> None:
 # === Menus / cutscenes ===
 
 
-def _music_tracks() -> list[str]:
+from typing import List
+
+def _music_tracks() -> List[str]:
     if not MUSIC_DIR.exists():
         return []
     tracks = [p.name for p in MUSIC_DIR.iterdir() if p.is_file() and p.suffix.lower() == ".ogg"]
@@ -6398,7 +6400,7 @@ class TitleScene(Scene):
             self.game.stop_music()
 
     def handle_event(self, event: pygame.event.Event) -> None:
-        # Only allow level select code (Konami code) in title screen
+        # 'self' is the instance, 'event' is passed in from the caller
         if event.type == pygame.KEYDOWN:
             if event.key == self._konami_code[self._konami_progress]:
                 self._konami_progress += 1
@@ -6413,35 +6415,12 @@ class TitleScene(Scene):
                     self._konami_progress = 1
                 else:
                     self._konami_progress = 0
-        if event.type == pygame.JOYHATMOTION:
-            hat_dir = event.value  # (x, y)
-            token = None
-            if hat_dir == (0, 1):
-                token = "up"
-            elif hat_dir == (0, -1):
-                token = "down"
-            if token is not None:
-                if token == self._flight_code_controller[self._flight_progress_controller]:
-                    self._flight_progress_controller += 1
-                else:
-                    self._flight_progress_controller = 1 if token == self._flight_code_controller[0] else 0
-        elif event.type == pygame.JOYBUTTONDOWN:
-            btn_token = "a" if event.button == 0 else None
-            if btn_token is not None:
-                if btn_token == self._flight_code_controller[self._flight_progress_controller]:
-                    self._flight_progress_controller += 1
-                else:
-                    self._flight_progress_controller = 1 if btn_token == self._flight_code_controller[0] else 0
-        if self._flight_progress_controller == len(self._flight_code_controller):
-            self._flight_progress_controller = 0
-            self.game.flight_cheat_enabled = True
-            try:
-                self.game.sound.play_event("menu_confirm")
-            except Exception:
-                pass
+
         result = self.menu.handle_event(event)
         if result == "exit":
             self.game.quit()
+
+
 
     def update(self, dt: float) -> None:
         self.bg_anim_time += dt
@@ -7427,7 +7406,7 @@ class GameplayScene(Scene):
         self.content = self.game.level_generator.generate(self.world, self.level)
         if self.content.goal is None:
             self.content.goal = Goal(700, 520, self.world, self.game.assets)
-        self.game.play_music(f"world{self.world}.mp3")
+        self.game.play_music(f"world{self.world}.ogg")
         self.is_tower = self.level % 10 == 0
         spawn_point = self._compute_spawn_point()
         self.player.spawn = pygame.Vector2(spawn_point)
