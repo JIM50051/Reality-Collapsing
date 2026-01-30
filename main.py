@@ -42,7 +42,7 @@ INPUT_ICON_DIR = ASSET_DIR / "input buttons"
 KB_ICON_DIR = INPUT_ICON_DIR / "Keyboard_Mouse" / "Dark"
 MOUSE_ICON_DIR = KB_ICON_DIR
 CONTROLLER_ICON_DIR = INPUT_ICON_DIR / "Controller" / "Default"
-SOUND_DIR = ASSET_DIR / "sounds"
+SFX_DIR = ASSET_DIR / "sfx"
 MUSIC_DIR = ASSET_DIR / "music"
 SAVE_FILE = BASE_DIR / "save_data.txt"
 SETTINGS_FILE = BASE_DIR / "settings.json"
@@ -1813,7 +1813,7 @@ class SoundManager:
             return cached
         if sound_file in self._missing:
             return None
-        path = SOUND_DIR / sound_file
+        path = SFX_DIR / sound_file
         if not path.exists():
             self._missing.add(sound_file)
             return None
