@@ -4693,6 +4693,7 @@ def play_first_entry_cutscene(game: "Game") -> None:
     # Suppress immediate accept in the next scene and clear any leftover inputs
     game._suppress_accept_until = time.time() + 0.4
     pygame.event.clear()
+    
 def play_final_cutscene(game: "Game") -> None:
     # Use SoundManager for SFX
     rumble_playing = False
